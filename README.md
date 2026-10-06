@@ -29,6 +29,30 @@ threshold key lies between *Lower* and *Upper*, then sorts each run along rows o
 
 Install it with *Preferences ▸ Add-ons ▸ Install from Disk*, choosing `addons/pixel_sort_node.py`.
 
+### Compositor Lab (`addons/compositor_lab/`)
+
+A package of experimental nodes (Add ▸ Lab ▸ Filter / Generate / Utility), each with a numpy CPU
+path and a GPU compute path, built on a shared library (`lib/`: node base class, GPU kernel
+helper, GLSL snippets with numpy twins for hashing, noise, colour spaces and blend modes). Needs
+the generator domain and evaluation context features of the custom build (see
+[docs/plan-stateless-nodes.md](docs/plan-stateless-nodes.md)). One broken node module is logged and
+does not stop the others from registering.
+
+Install: `python3 tools/build_zip.py` writes `dist/compositor_lab.zip`; use *Preferences ▸
+Add-ons ▸ Install from Disk* on that zip.
+
+Nodes so far:
+- **Noise** (Generate): value, Perlin, simplex, Worley F1 and F2-F1; fBm (octaves, lacunarity,
+  gain), ridged, domain warp, scale, offset, seed. The third dimension is `Phase + time * Speed`,
+  so it animates. Outputs Value and a decorrelated per-channel Color.
+- **Blend Modes+** (Filter): 27 modes on premultiplied inputs A (backdrop) and B (source) with
+  Fac: Normal, Multiply, Screen, Overlay, Soft Light (W3C and Pegtop), Hard/Vivid/Linear/Pin
+  Light, Hard Mix, Color Dodge/Burn, Linear Dodge/Burn, Subtract, Divide, Difference, Exclusion,
+  Darken/Lighten, Darker/Lighter Color and OKLCh Hue/Saturation/Color/Luminosity.
+
+Tests: `tests/lab/` (auto-run as suites `lab_*`), for example
+`tests/run_remote.sh HOST /path/to/Blender.app blender-test-lab 'lab_*'`.
+
 ## Writing your own node
 
 [`templates/custom_compositor_node.py`](templates/custom_compositor_node.py) is a minimal node that
