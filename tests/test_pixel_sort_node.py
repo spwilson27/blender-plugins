@@ -133,7 +133,21 @@ def setup_scene(scene):
         print("WARNING: no compositor_device property found")
 
 
-def build_tree(scene, image, node_idname, props=None, inputs=None):
+def make_mask_image(values, name):
+    """Float image with R=G=B=values (H, W) so any Color->Float conversion gives `values`."""
+    h, w = values.shape
+    px = np.ones((h, w, 4), np.float32)
+    px[..., :3] = values[..., None]
+    img = bpy.data.images.new(name, w, h, alpha=True, float_buffer=True)
+    img.colorspace_settings.name = 'Non-Color'
+    img.pixels.foreach_set(px.ravel())
+    img.update()
+    img.pack()
+    return img
+
+
+def build_tree(scene, image, node_idname, props=None, inputs=None, mask_image=None,
+               remove_mask_socket=False):
     """Image -> <node> -> Group Output (+ Viewer). Returns the test node."""
     tree = scene.compositing_node_group
     if tree is None:
@@ -154,6 +168,12 @@ def build_tree(scene, image, node_idname, props=None, inputs=None):
     for k, v in (inputs or {}).items():
         node.inputs[k].default_value = v
     tree.links.new(n_img.outputs["Image"], node.inputs["Image"])
+    if mask_image is not None:
+        n_mask = tree.nodes.new('CompositorNodeImage')
+        n_mask.image = mask_image
+        tree.links.new(n_mask.outputs["Image"], node.inputs["Mask"])
+    if remove_mask_socket:
+        node.inputs.remove(node.inputs["Mask"])
     tree.links.new(node.outputs["Image"], n_out.inputs[0])
     tree.links.new(node.outputs["Image"], n_view.inputs["Image"])
     return node
@@ -293,6 +313,93 @@ def main():
             report(False, "%s raised" % name)
     if last is not None:
         save_png(last, "pixel_sort_node_after")
+
+    # ---- Mask input ----
+    def mask_tests():
+        ref_kw = lambda p: (p.get('mask_key', 'LUMA'), 0.25, 0.8, p.get('sort_key', 'LUMA'),
+                            p.get('vertical', False), p.get('reverse', False),
+                            p.get('invert_mask', False))
+        rng = np.random.default_rng(99)
+
+        def gradient(w, h):
+            x = np.linspace(0.0, 1.0, w, dtype=np.float32)[None, :]
+            y = np.linspace(0.0, 1.0, h, dtype=np.float32)[:, None]
+            return np.clip(0.5 + 0.9 * (x - 0.5) + 0.3 * (y - 0.5), 0.0, 1.0).astype(np.float32)
+
+        def random_binary(w, h):
+            # Blobby-ish: runs of mask along rows so runs are not all length 1.
+            m = rng.random((h, w)) < 0.5
+            m = m | np.roll(m, 1, axis=1) | np.roll(m, 2, axis=1)
+            return m.astype(np.float32)
+
+        cases = [
+            # name, props, size, mask values or scalar
+            ("mask_binary_img", {}, (W, H), "binary"),
+            ("mask_binary_img_inv_desc", dict(invert_mask=True, reverse=True), (W, H), "binary"),
+            ("mask_gradient_img", {}, (W, H), "gradient"),
+            ("mask_binary_vertical", dict(vertical=True, sort_key='HUE'), (W, H), "binary"),
+            ("mask_gradient_vertical_desc", dict(vertical=True, reverse=True), (W, H), "gradient"),
+            ("mask_binary_odd", {}, (333, 187), "binary"),
+            ("mask_gradient_odd_vertical", dict(vertical=True), (333, 187), "gradient"),
+            ("mask_scalar_0", {}, (W, H), 0.0),
+            ("mask_scalar_0_vertical", dict(vertical=True), (W, H), 0.0),
+            ("mask_scalar_0.5", {}, (W, H), 0.5),
+            ("mask_scalar_1", {}, (W, H), 1.0),
+        ]
+        for name, props, size, mval in cases:
+            if ONLY and ONLY not in name:
+                continue
+            try:
+                if size not in images:
+                    images[size] = make_test_image(size[0], size[1], "PixelSortInput_%dx%d" % size)
+                image, src = images[size]
+                scene.render.resolution_x, scene.render.resolution_y = size
+                mimg = None
+                sockets = {}
+                bmask = None
+                if isinstance(mval, str):
+                    vals = random_binary(*size) if mval == "binary" else gradient(*size)
+                    mimg = make_mask_image(vals, "Mask_" + name)
+                    bmask = vals > 0.5
+                else:
+                    sockets["Mask"] = mval
+                    if mval <= 0.5:
+                        bmask = np.zeros(size[::-1], bool)  # nothing may be sorted
+                build_tree(scene, image, "CompositorNodePixelSort", props, sockets, mask_image=mimg)
+                got = render_pixels(scene, name)
+                ref = pixel_sort(src, *ref_kw(props), mask=bmask)
+                if mimg is None and mval <= 0.5:
+                    report(np.array_equal(got, src) or float(np.abs(got - src).max()) <= tol,
+                           "%s: output == input" % name)
+                elif mimg is None:
+                    unmasked = pixel_sort(src, *ref_kw(props))
+                    report(np.array_equal(ref, unmasked), "%s: reference == unmasked" % name)
+                else:
+                    unmasked = pixel_sort(src, *ref_kw(props))
+                    report(not np.array_equal(ref, unmasked) and not np.array_equal(ref, src),
+                           "%s: mask is effective (differs from unmasked and from input)" % name)
+                compare(name, got, ref, tol)
+            except Exception:
+                traceback.print_exc()
+                report(False, "%s raised" % name)
+
+        # Backwards compatibility: node without a Mask socket (saved before it existed).
+        try:
+            name = "mask_socket_removed"
+            if not (ONLY and ONLY not in name):
+                image, src = images0
+                scene.render.resolution_x, scene.render.resolution_y = W, H
+                build_tree(scene, image, "CompositorNodePixelSort", {}, {}, remove_mask_socket=True)
+                report("Mask" not in [i.name for i in
+                                      scene.compositing_node_group.nodes[1].inputs],
+                       "%s: socket removed" % name)
+                got = render_pixels(scene, name)
+                compare(name, got, pixel_sort(src), tol)
+        except Exception:
+            traceback.print_exc()
+            report(False, "mask_socket_removed raised")
+
+    mask_tests()
 
     # ---- Robustness ----
     scene.render.resolution_x, scene.render.resolution_y = W, H

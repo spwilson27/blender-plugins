@@ -51,12 +51,15 @@ def compute_key(rgb, key):
 
 
 def pixel_sort(pixels, mask_key='LUMA', lo=0.25, hi=0.8, sort_key='LUMA',
-               vertical=False, reverse=False, invert_mask=False):
+               vertical=False, reverse=False, invert_mask=False, mask=None):
     """Sort runs of in-threshold pixels.
 
     pixels: (H, W, C) float array, C >= 3 (row 0 = top or bottom, irrelevant).
     Runs are contiguous pixels along a row (or column if vertical) whose
     mask key lies in [lo, hi]. Each run is sorted by sort_key.
+    mask: optional (H, W) bool array (same orientation as pixels); a pixel is
+    only sorted where it is True (in addition to the threshold test, which is
+    the only one affected by invert_mask). Runs are split where either fails.
     Returns a new array of the same shape.
     """
     img = np.asarray(pixels)
@@ -67,9 +70,15 @@ def pixel_sort(pixels, mask_key='LUMA', lo=0.25, hi=0.8, sort_key='LUMA',
     rgb = flat[:, :3]
 
     mkey = compute_key(rgb, mask_key)
-    mask = (mkey >= lo) & (mkey <= hi)
+    sel = (mkey >= lo) & (mkey <= hi)
     if invert_mask:
-        mask = ~mask
+        sel = ~sel
+    if mask is not None:
+        user = np.asarray(mask, dtype=bool)
+        if vertical:
+            user = np.swapaxes(user, 0, 1)
+        sel &= user.reshape(h * w)
+    mask = sel
 
     idx = np.flatnonzero(mask)
     out = flat.copy()
@@ -305,9 +314,22 @@ bool in_mask(vec3 c)
   return (invert_mask != 0) ? !inside : inside;
 }
 
+/* User mask: mask_mode 0 = none, 1 = texture (> 0.5 passes), 2 = nothing passes. */
+bool user_mask(ivec2 p)
+{
+  if (mask_mode == 0) {
+    return true;
+  }
+  if (mask_mode == 2) {
+    return false;
+  }
+  return texelFetch(mask_tex, p, 0).r > 0.5;
+}
+
 bool pix_mask(int line, int i)
 {
-  return in_mask(texelFetch(src, pos_of(line, i), 0).rgb);
+  ivec2 p = pos_of(line, i);
+  return in_mask(texelFetch(src, p, 0).rgb) && user_mask(p);
 }
 
 uint key_bits(vec3 c)
@@ -350,7 +372,7 @@ void main()
     uvec4 v;
     if (i < len) {
       vec3 c = texelFetch(src, pos_of(line, i), 0).rgb;
-      bool m = in_mask(c);
+      bool m = pix_mask(line, i);
       uint rs = uint(i);
       if (m && i > 0 && pix_mask(line, i - 1)) {
         rs = 0u;
@@ -434,10 +456,11 @@ def _get_shader_parallel(fmt):
 
     info = gpu.types.GPUShaderCreateInfo()
     info.sampler(0, 'FLOAT_2D', "src")
+    info.sampler(1, 'FLOAT_2D', "mask_tex")
     info.image(0, fmt, 'FLOAT_2D', "dst", qualifiers={'WRITE'})
     info.image(1, 'RGBA32UI', 'UINT_2D', "scratch", qualifiers={'READ', 'WRITE'})
     for name in ("size_x", "size_y", "padded", "mask_key", "sort_key", "is_vertical",
-                 "reverse_order", "invert_mask", "zero"):
+                 "reverse_order", "invert_mask", "zero", "mask_mode"):
         info.push_constant('INT', name)
     info.push_constant('FLOAT', "lower")
     info.push_constant('FLOAT', "upper")
@@ -496,6 +519,26 @@ def _scalar(value, default):
         return default
 
 
+def _mask_state(value):
+    """Classify the Mask socket value (None if the socket is missing, e.g. nodes
+    saved before it existed). Returns ('none'|'zero'|'image', value)."""
+    if value is None:
+        return 'none', None
+    if isinstance(value, (int, float, bool)):
+        return ('none' if float(value) > 0.5 else 'zero'), None
+    if isinstance(value, (tuple, list)):
+        return ('none' if float(value[0]) > 0.5 else 'zero'), None
+    return 'image', value
+
+
+def _mask_to_bool(buf):
+    """(H, W) float buffer -> (H, W) bool (channel 0 if the buffer has channels)."""
+    m = np.asarray(buf)
+    if m.ndim == 3:
+        m = m[..., 0]
+    return m > 0.5
+
+
 # ---------------------------------------------------------------------------
 # Node
 # ---------------------------------------------------------------------------
@@ -521,6 +564,9 @@ class CompositorNodePixelSort(bpy.types.CompositorNode):
         lower.default_value = 0.25
         upper = self.inputs.new('NodeSocketFloat', "Upper")
         upper.default_value = 0.8
+        # Factor subtype = float socket with a 0..1 range (min/max can't be set from Python).
+        mask = self.inputs.new('NodeSocketFloatFactor', "Mask")
+        mask.default_value = 1.0
         self.outputs.new('NodeSocketColor', "Image")
 
     def draw_buttons(self, context, layout):
@@ -549,12 +595,19 @@ class CompositorNodePixelSort(bpy.types.CompositorNode):
         # mean of the buffer is used.
         lo = _scalar(inputs["Lower"], 0.25)
         hi = _scalar(inputs["Upper"], 0.8)
+        # Mask: unlinked value <= 0.5 -> copy, > 0.5 -> no masking; linked image ->
+        # per-pixel (> 0.5). Missing socket (old files) -> no masking.
+        state, mval = _mask_state(inputs.get("Mask"))
+        if state == 'zero':
+            out[...] = img
+            return
+        mask = _mask_to_bool(mval) if state == 'image' else None
         out[...] = pixel_sort(
             img, self.mask_key, lo, hi, self.sort_key,
-            self.vertical, self.reverse, self.invert_mask)
+            self.vertical, self.reverse, self.invert_mask, mask)
 
     # -- GPU ---------------------------------------------------------------
-    def _gpu_parallel(self, gpu, src, dst, lo, hi):
+    def _gpu_parallel(self, gpu, src, dst, lo, hi, mask_mode, mask_tex):
         w, h = int(dst.width), int(dst.height)
         length, lines = (h, w) if self.vertical else (w, h)
         padded = 1
@@ -563,6 +616,9 @@ class CompositorNodePixelSort(bpy.types.CompositorNode):
         shader = _get_shader_parallel(dst.format)
         scratch = _get_scratch(padded, lines)
         shader.uniform_sampler("src", src)
+        # Always bound; unused (src as a placeholder) unless mask_mode == 1.
+        shader.uniform_sampler("mask_tex", mask_tex if mask_mode == 1 else src)
+        shader.uniform_int("mask_mode", mask_mode)
         shader.image("dst", dst)
         shader.image("scratch", scratch)
         shader.uniform_int("size_x", w)
@@ -594,8 +650,13 @@ class CompositorNodePixelSort(bpy.types.CompositorNode):
         lo = _scalar(inputs["Lower"], 0.25)
         hi = _scalar(inputs["Upper"], 0.8)
 
-        if _GPU_IMPL == "parallel":
-            self._gpu_parallel(gpu, src, dst, lo, hi)
+        # Mask socket (see evaluate_cpu). The serial shader has no mask support, so
+        # it is only used when no masking is needed; otherwise the parallel one runs.
+        state, mval = _mask_state(inputs.get("Mask"))
+        mask_mode = {'none': 0, 'image': 1, 'zero': 2}[state]
+
+        if _GPU_IMPL == "parallel" or mask_mode != 0:
+            self._gpu_parallel(gpu, src, dst, lo, hi, mask_mode, mval)
             return
 
         shader = _get_shader(dst.format)

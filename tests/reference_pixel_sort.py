@@ -44,12 +44,15 @@ def compute_key(rgb, key):
 
 
 def pixel_sort(pixels, mask_key='LUMA', lo=0.25, hi=0.8, sort_key='LUMA',
-               vertical=False, reverse=False, invert_mask=False):
+               vertical=False, reverse=False, invert_mask=False, mask=None):
     """Sort runs of in-threshold pixels.
 
     pixels: (H, W, C) float array, C >= 3 (row 0 = top or bottom, irrelevant).
     Runs are contiguous pixels along a row (or column if vertical) whose
     mask key lies in [lo, hi]. Each run is sorted by sort_key.
+    mask: optional (H, W) bool array (same orientation as pixels); a pixel is
+    only sorted where it is True (in addition to the threshold test, which is
+    the only one affected by invert_mask). Runs are split where either fails.
     Returns a new array of the same shape.
     """
     img = np.asarray(pixels)
@@ -60,9 +63,15 @@ def pixel_sort(pixels, mask_key='LUMA', lo=0.25, hi=0.8, sort_key='LUMA',
     rgb = flat[:, :3]
 
     mkey = compute_key(rgb, mask_key)
-    mask = (mkey >= lo) & (mkey <= hi)
+    sel = (mkey >= lo) & (mkey <= hi)
     if invert_mask:
-        mask = ~mask
+        sel = ~sel
+    if mask is not None:
+        user = np.asarray(mask, dtype=bool)
+        if vertical:
+            user = np.swapaxes(user, 0, 1)
+        sel &= user.reshape(h * w)
+    mask = sel
 
     idx = np.flatnonzero(mask)
     out = flat.copy()

@@ -57,6 +57,25 @@ for mk in ref.KEYS:
                     n += 1
 print(f"PASS: {n} option combinations match the naive loop")
 
+# Same with a random boolean mask (runs split wherever the mask or the threshold fails).
+n = 0
+for mk in ref.KEYS:
+    for sk in ref.KEYS:
+        for vertical in (False, True):
+            for reverse in (False, True):
+                for invert in (False, True):
+                    px = rng.random((13, 17, 4)).astype(np.float32)
+                    msk = rng.random((13, 17)) < 0.7
+                    a = ref.pixel_sort(px, mk, 0.2, 0.9, sk, vertical, reverse, invert, mask=msk)
+                    b = naive(px, mk, 0.2, 0.9, sk, vertical, reverse, invert, mask=msk)
+                    assert np.array_equal(a, b), ("mask", mk, sk, vertical, reverse, invert)
+                    n += 1
+# All-True mask == no mask; all-False mask == input.
+px = rng.random((13, 17, 4)).astype(np.float32)
+assert np.array_equal(ref.pixel_sort(px, mask=np.ones((13, 17), bool)), ref.pixel_sort(px))
+assert np.array_equal(ref.pixel_sort(px, mask=np.zeros((13, 17), bool)), px)
+print(f"PASS: {n} masked option combinations match the naive loop")
+
 # Runs must not wrap from the end of one row to the start of the next.
 px = np.zeros((2, 3, 4), np.float32)
 px[..., 3] = 1

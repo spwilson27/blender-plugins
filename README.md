@@ -18,7 +18,11 @@ threshold key lies between *Lower* and *Upper*, then sorts each run along rows o
 
 - **Threshold by / Sort by:** luminance, hue, saturation, value, red, green or blue.
 - **Options:** vertical, descending, invert mask.
-- **Mask input:** limits sorting to where the mask is above 0.5.
+- **Mask input:** a pixel is sorted only if it passes the threshold test (*Invert Mask* applies
+  to that test only) and the mask is above 0.5; runs are split wherever either test fails. An
+  unlinked Mask of 0.5 or less returns the input unchanged, above 0.5 has no effect. Nodes saved
+  before the Mask socket existed keep working. With the (benchmark-only) serial GPU
+  implementation a masked node falls back to the parallel shader.
 - **CPU path:** vectorised numpy.
 - **GPU path:** parallel bitonic sort in a compute shader, with no GPU↔CPU round trip. Its output
   is bit-identical to the CPU path at full precision.

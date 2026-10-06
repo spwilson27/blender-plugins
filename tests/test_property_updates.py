@@ -92,6 +92,9 @@ STEPS = [
     ("bpy.props BoolProperty: invert_mask", lambda: setattr(node, "invert_mask", True)),
     ("compositor device CPU -> GPU", lambda: setattr(scene.render, "compositor_device", 'GPU')),
     ("bpy.props BoolProperty on GPU: vertical", lambda: setattr(node, "vertical", False)),
+    # Last: a Mask of 0 makes the output equal the input, so later steps would show no change.
+    ("socket value: Mask (0 -> copy of input)",
+     lambda: setattr(node.inputs["Mask"], "default_value", 0.0)),
 ]
 
 state = {"step": -2, "wait": 0, "before_calls": 0, "before_px": None}
