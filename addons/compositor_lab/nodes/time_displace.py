@@ -146,7 +146,7 @@ class CompositorNodeLabTimeDisplace(StatefulNode, LabNode, bpy.types.CompositorN
     def draw_buttons(self, context, layout):
         self.draw_props(layout)
         for s in lab_state.streams_for(self.state_key()):
-            msg = getattr(s, "message", "")
+            msg = s.message
             if msg:
                 layout.label(text=msg, icon='ERROR')
                 break
@@ -196,18 +196,12 @@ class CompositorNodeLabTimeDisplace(StatefulNode, LabNode, bpy.types.CompositorN
     # -- shared ring management -----------------------------------------------
     def _ring(self, ctx, spec, make):
         """(plan, ring) for this evaluation: the stream's ring, or a fresh one on a reset or when
-        the layout changed (History Frames, Downscale, Precision, size)."""
-        stream = self.state(ctx)
-        plan = stream.advance(ctx.frame, ctx.frame_start, self.max_catch_up, 0)
-        ring = None if plan.kind == lab_state.RESET else stream.current
-        key = make(None)
-        if ring is not None and ring.key != key:
-            stream.reset()
-            plan = stream.advance(ctx.frame, ctx.frame_start, self.max_catch_up, 0)
-            ring = None
-        if ring is None:
-            ring = make(True)
-        stream.message = spec["message"]
+        the layout changed (History Frames, Downscale, Precision, size: the signature)."""
+        plan = self.advance(ctx, signature=make(None), mutable=True)
+        ring = plan.run(lambda: make(True), None)
+        plan.stream.message = spec["message"]
+        if spec["message"]:
+            ctx.report(spec["message"], 'WARNING')
         return plan, ring
 
     # -- CPU -----------------------------------------------------------------
@@ -228,7 +222,6 @@ class CompositorNodeLabTimeDisplace(StatefulNode, LabNode, bpy.types.CompositorN
                                              default=(0.0, 0.0, 0.0, 1.0)), F32)
         frame = int(round(ctx.frame))
         ring.push(frame, img)
-        plan.commit(ring, ())     # pre-step marker: lets a re-render of this frame be a REPEAT
         if out is None and out_d is None:
             return
 
@@ -291,7 +284,6 @@ class CompositorNodeLabTimeDisplace(StatefulNode, LabNode, bpy.types.CompositorN
             image = lab_gpu.const_texture(image)
         frame = int(round(ctx.frame))
         ring.push(frame, image)
-        plan.commit(ring, ())     # pre-step marker: lets a re-render of this frame be a REPEAT
         if dst is None and dst_d is None:
             return
 

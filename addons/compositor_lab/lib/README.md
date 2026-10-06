@@ -12,7 +12,7 @@ logged and skipped).
 | `lib/gpu.py` | `kernel` / `pointwise` builder, shader cache, uniform binding, scratch textures |
 | `lib/state.py` | state streams for stateful nodes: frame cache, memory budget, Reset operator |
 | `lib/errors.py` | log of evaluation errors (read by the tests), `LabShaderError` |
-| `lib/glsl/*.py` | GLSL as Python strings: `hash`, `color`, `noise`, `blend`, `exact`, `pattern`, `field`, `dither`, `sampling`, `reduce`, `distance` |
+| `lib/glsl/*.py` | GLSL as Python strings: `hash`, `color`, `noise`, `blend`, `exact`, `pattern`, `field`, `dither`, `sampling`, `reduce`, `distance`, `ca`, `rd`, `history` |
 | `lib/np_*.py`, `lib/distance.py`, `lib/reduce.py`, `lib/expr.py` | numpy twins of the GLSL, and the CPU sides of the multi-pass helpers |
 
 Rule: a node's maths lives once per backend. If more than one node needs it, it goes in `lib/`
@@ -77,7 +77,9 @@ NODE_CLASSES = [CompositorNodeLabGain]                  # required
 * **Single-value outputs** (F3): `Out("Mean", "FLOAT", single=True)`, written with
   `self.out_single(outputs, "Mean")[:] = ...` on both backends (a 1-D array of the channel count).
 * **Inputs**: `in_float` / `in_int` / `in_color` give a *single value* (the default if the socket is
-  linked to an image, identically on both backends). Per-pixel inputs: `in_image_array(inputs,
+  linked to an image, identically on both backends). `in_is_image(inputs, name)` tells an image
+  (array / texture) from a single value; whether a link exists is not exposed (a linked Value node is
+  a single value, which is what a scalar parameter wants). Per-pixel inputs: `in_image_array(inputs,
   name, ctx.shape, channels)` on the CPU (broadcasts single values, adapts channels, clamp-resamples
   other sizes) and `in_texture_or_value(inputs, name, default)` on the GPU (a `GPUTexture` or a
   single value; `lab_gpu.pointwise` accepts both). Colours are premultiplied scene-linear; row 0 is
@@ -117,7 +119,7 @@ class CompositorNodeLabThing(StatefulNode, LabNode, bpy.types.CompositorNode):  
   ctx.use_gpu)`; a new key (other size, device or evaluation kind) simply starts from reset. On
   builds without F4 the kind is `'UNKNOWN'`, the scene start frame defaults to 1 (`ctx.kind`,
   `ctx.is_animation_playing`, `ctx.frame_start`, `ctx.frame_end`).
-* **`advance(frame, start_frame, max_catch_up, cache_frames)`** returns a `Plan`
+* **`advance(frame, start_frame, max_catch_up, cache_frames, signature, mutable)`** returns a `Plan`
   (`plan.kind`, `plan.state`, `plan.init`, `plan.steps`, `plan.message`). `plan.run(init, step)`
   executes it and commits the result: `init()` builds the state from the inputs, `step(state)` returns
   the next state; both return **new** payloads. Do not mutate `plan.state` or a committed payload.
@@ -132,6 +134,19 @@ class CompositorNodeLabThing(StatefulNode, LabNode, bpy.types.CompositorNode):  
   | forward jump of k <= max_catch_up | `CATCH_UP` | k steps (all fed the requested frame's inputs) |
   | backward to an uncached frame f, f - start <= max_catch_up | `RESIM` | `init()`, then f - start steps |
   | any other jump | `HOLD` | the current state unchanged (`plan.message` says why; not cached); the stream moves to the requested frame, so sequential frames carry on |
+
+  `self.advance(ctx, signature=..., mutable=...)` adds two options.
+  **`signature`** (any comparable value, e.g. the simulation `Scale`, the grid size, the layout of
+  a buffer): when it differs from the one the stored state was made with, the stream resets first
+  (the plan is a `RESET`, frame cache and `stream.meta` dropped). **`plan.reset()`** does the same
+  on a plan already in hand (state that cannot be continued for a reason `signature` cannot
+  express). `stream.meta` is a dict for per-stream data, cleared on reset; `stream.message` is
+  `meta["message"]` (shown by Time Displace under its buttons).
+  **`mutable=True`** is for a payload the node mutates in place and addresses by frame (a history
+  ring): no stepping, no frame cache, no copies, no holds. `plan.kind` is `RESET` (first, frame <=
+  start, signature change), `REPEAT` (same frame), `STEP` (last + 1), `CATCH_UP` (later) or
+  `RESTORE` (earlier); apart from `RESET`, `plan.state` is the live payload and `steps == 0`. Use
+  `ring = plan.run(make, None)`, then update `ring` in place.
 
   Frames are rounded to integers. The input of the skipped frames is not available, so a catch-up of a
   node that reads time-varying inputs is an approximation.

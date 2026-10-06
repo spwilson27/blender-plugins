@@ -31,7 +31,7 @@ Install it with *Preferences ▸ Add-ons ▸ Install from Disk*, choosing `addon
 
 ### Compositor Lab (`addons/compositor_lab/`)
 
-A package of 22 experimental nodes (Add ▸ Lab ▸ Filter / Generate / Simulate / Utility), each with a numpy CPU
+A package of 25 experimental nodes (Add ▸ Lab ▸ Filter / Generate / Simulate / Utility), each with a numpy CPU
 path and a GPU compute path, built on a shared library (`lib/`: node base class, GPU kernel
 builder, GLSL snippets with numpy twins for hashing, noise, colour, blend modes, sampling,
 distance transforms and more). Needs the generator domain and evaluation context features of the
@@ -74,6 +74,21 @@ Node details (sockets, properties, algorithms, tolerances) are in the linked fil
 | Node | What it does | Details |
 |---|---|---|
 | Feedback / Trails | Mix the input with the previous output, zoomed, rotated, shifted, hue-shifted and faded; optional blend mode | [simulate](docs/nodes/simulate.md#feedback--trails-compositornodelabfeedback) |
+| Reaction-Diffusion | Gray-Scott patterns (spots, coral, mazes) that grow frame by frame, with presets, seed image and feed / kill maps | [reaction_diffusion](docs/nodes/reaction_diffusion.md) |
+| Cellular Automata | Life-like and Generations rules on a cell grid, advanced per frame, with seed and inject inputs | [cellular_automata](docs/nodes/cellular_automata.md) |
+| Time Displace / Slit-scan | Per-pixel delay into a history of past frames: slit-scan, radial, map-driven time warps | [time_displace](docs/nodes/time_displace.md) |
+
+*Stateful nodes.* A Simulate node keeps its state in a stream per evaluation kind (render,
+compositor backdrop, viewport, sequencer), size and device, so the render of frame 10 does not
+disturb the backdrop. Sequential frames step the simulation; re-rendering the same frame shows
+parameter edits live without running forward; scrubbing back restores cached frames (32 per node,
+the *Cached Frames* property), small forward jumps are caught up (*Max Catch-up*, 64 frames) and
+larger ones hold the last state with a message. Frames at or before the scene start frame restart
+from the inputs. The *Reset* button on the node clears its state. Memory is budgeted: 256 MB per
+stream and 1 GB overall (least-recently-used eviction), idle streams expire after 30 minutes and
+loading a file clears everything. Time Displace additionally has its own *Memory Cap*. Details:
+[lib README](addons/compositor_lab/lib/README.md#stateful-nodes) and
+[docs/plan-stateful-nodes.md](docs/plan-stateful-nodes.md); per-node pages in [docs/nodes/](docs/nodes/).
 
 **Utility**
 
@@ -95,7 +110,8 @@ during evaluation (including a GPU shader that does not compile) fails the test 
 Gallery: `tools/gallery.py` (run it with `Blender -b --factory-startup --python tools/gallery.py`;
 it needs a GPU device) renders every Lab node and Pixel Sort at 480x270 with default settings on a
 shared test image, generators standalone, into `dist/gallery/*.png` and a labelled contact sheet
-`dist/gallery.png`.
+`dist/gallery.png`, which ends with one row per Simulate node showing frames 1, 10, 30 and 60 of a
+sequence rendered frame by frame.
 
 ## Writing your own node
 

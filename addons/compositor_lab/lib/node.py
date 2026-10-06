@@ -57,11 +57,11 @@ class Ctx:
     """Normalised evaluation context. ``has_context`` is False on builds without F2."""
 
     __slots__ = ("frame", "fps", "time", "size", "use_gpu", "has_context", "kind",
-                 "is_animation_playing", "frame_start", "frame_end")
+                 "is_animation_playing", "frame_start", "frame_end", "_report")
 
     def __init__(self, frame=0.0, fps=24.0, time=0.0, size=(1, 1), use_gpu=False,
                  has_context=False, kind="UNKNOWN", is_animation_playing=False,
-                 frame_start=1, frame_end=250):
+                 frame_start=1, frame_end=250, report=None):
         self.frame = float(frame)
         self.fps = float(fps)
         self.time = float(time)
@@ -74,6 +74,13 @@ class Ctx:
         self.is_animation_playing = bool(is_animation_playing)
         self.frame_start = int(frame_start)
         self.frame_end = int(frame_end)
+        self._report = report
+
+    def report(self, message, level='INFO'):
+        """F5: a non-fatal message (``'INFO'`` or ``'WARNING'``) shown on the node / in the info
+        bar. Only valid during the evaluate call. A no-op on builds without ``context.report``."""
+        if self._report is not None:
+            self._report(str(message), level)
 
     @property
     def shape(self):
@@ -99,7 +106,8 @@ def make_ctx(context, size, use_gpu):
                getattr(context, "kind", "UNKNOWN"),
                getattr(context, "is_animation_playing", False),
                getattr(context, "frame_start", 1),
-               getattr(context, "frame_end", 250))
+               getattr(context, "frame_end", 250),
+               getattr(context, "report", None))
 
 
 def is_single(value):
@@ -303,6 +311,15 @@ class LabNode:
         return a
 
     @staticmethod
+    def in_is_image(inputs, name):
+        """True when the input holds an image (a CPU array / GPUTexture), False when it is a
+        single value: an unlinked socket *or* one linked to a single-value output (a Value node,
+        a Mean output), which evaluate cannot tell apart and for which the single value is the
+        right thing to use. (Whether a link exists is deliberately not exposed: evaluation runs
+        on a copy of the tree on other threads, and a linked constant should act as a scalar.)"""
+        return not is_single(inputs.get(name))
+
+    @staticmethod
     def in_texture_or_value(inputs, name, default=0.0):
         """GPU: a GPUTexture for a linked input, else the single value (float / tuple)."""
         v = inputs.get(name)
@@ -350,10 +367,16 @@ class StatefulNode:
 
         return lab_state.get_stream(self.state_key(), ctx.kind, ctx.size, ctx.use_gpu)
 
-    def advance(self, ctx):
-        """``self.state(ctx).advance(...)`` with this node's start frame and properties."""
-        return self.state(ctx).advance(ctx.frame, ctx.frame_start, self.max_catch_up,
-                                       self.cache_frames)
+    def advance(self, ctx, signature=None, mutable=False):
+        """``self.state(ctx).advance(...)`` with this node's start frame and properties.
+        ``signature``: reset the state when this value changes (the layout of the state, e.g.
+        grid size); ``mutable``: in-place frame-addressed payload (no frame cache, see
+        ``lib/state.py``)."""
+        plan = self.state(ctx).advance(ctx.frame, ctx.frame_start, self.max_catch_up,
+                                       self.cache_frames, signature, mutable)
+        if plan.message:
+            ctx.report(plan.message, 'WARNING')      # e.g. a hold after a long jump
+        return plan
 
     def draw_state_buttons(self, layout):
         op = layout.operator("compositor_lab.reset_state", text="Reset", icon='FILE_REFRESH')

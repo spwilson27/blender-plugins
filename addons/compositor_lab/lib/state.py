@@ -35,6 +35,20 @@ frame; the inputs of skipped frames are not available. After a hold the stream c
 the requested frame (the state is stale but sequential frames carry on from it); holds are not
 cached. Frames are rounded to integers.
 
+``advance(..., signature=X)`` ties the stored state to a value that describes its layout (grid
+size, history layout, ...): when it differs from the one the state was made with, the stream is
+reset first (the plan is then a ``RESET``). ``plan.reset()`` forces the same on the plan in hand.
+``stream.meta`` is a free-form dict for per-stream data (info messages for the node UI); it is
+cleared on every reset.
+
+``advance(..., mutable=True)`` is for payloads the node mutates in place and addresses by frame
+(a ring buffer of past frames): there is no stepping, no frame cache and no copy. The kinds are
+``RESET`` (first evaluation, frame <= start, signature change), ``REPEAT`` (frame == last),
+``STEP`` (last + 1), ``CATCH_UP`` (any later frame) and ``RESTORE`` (any earlier frame); all of
+them but ``RESET`` carry the stream's current payload as ``plan.state`` with ``steps == 0`` and
+there are no holds. ``plan.run(init, step)`` builds the payload on a reset, else commits the
+current one; the node then updates it in place.
+
 State payloads are numpy arrays (CPU) or ``gpu.types.GPUTexture`` (GPU), or tuples / lists / dicts of
 them. A payload handed to ``commit`` / returned by a step belongs to the stream: never mutate it
 afterwards, and treat ``plan.state`` as read-only (step functions return a new payload). The frame
@@ -158,6 +172,17 @@ class Plan:
         self.message = message      # info text for holds ("" otherwise)
         self.pre = pre              # state before the last step (see ``run``)
 
+    def reset(self):
+        """Turn this into a reset: drop everything stored in the stream (state, frame cache,
+        meta) and build the state from the inputs. For a state that cannot be continued (its
+        layout no longer matches the node's settings); see also ``advance(signature=...)``."""
+        self.stream._clear()
+        self.kind = RESET
+        self.state = self.pre = None
+        self.init = True
+        self.steps = 0
+        self.message = ""
+
     @property
     def hold(self):
         return self.kind == HOLD
@@ -199,6 +224,9 @@ class StateStream:
         self.live_bytes = 0
         self.used = _clock[0]()
         self.max_frames = CONFIG["cache_frames"]
+        self.signature = None       # layout signature of the stored state (see ``advance``)
+        self.meta = {}              # per-stream data for the node; cleared on reset
+        self.mutable = False
 
     # -- queries -----------------------------------------------------------
     @property
@@ -208,16 +236,34 @@ class StateStream:
     def cached_frames(self):
         return sorted(self.cache)
 
+    @property
+    def message(self):
+        """Info text a node wants to show next to its buttons (``meta["message"]``)."""
+        return self.meta.get("message", "")
+
+    @message.setter
+    def message(self, text):
+        self.meta["message"] = text
+
     def reset(self):
         """Forget everything: the next evaluation resets from the inputs."""
         with _lock:
-            self.last = self.current = self.pre = self.last_kind = None
-            self.stale = False
-            self.cache.clear()
-            self.cache_bytes = self.live_bytes = 0
+            self._clear()
+            self.signature = None
+
+    def _clear(self):
+        self.last = self.current = self.pre = self.last_kind = None
+        self.stale = False
+        self.cache.clear()
+        self.cache_bytes = self.live_bytes = 0
+        self.meta = {}
 
     # -- the semantics table -----------------------------------------------
-    def advance(self, frame, start_frame=1, max_catch_up=None, cache_frames=None):
+    def advance(self, frame, start_frame=1, max_catch_up=None, cache_frames=None,
+                signature=None, mutable=False):
+        """The plan for ``frame`` (see the module docstring). ``signature`` (any comparable
+        value): reset the stream first when it differs from the one of the stored state.
+        ``mutable``: in-place, frame-addressed payload, see the module docstring."""
         with _lock:
             self.used = _clock[0]()
             if self.key in _streams:
@@ -225,11 +271,23 @@ class StateStream:
             if max_catch_up is None:
                 max_catch_up = CONFIG["max_catch_up"]
             self.max_frames = CONFIG["cache_frames"] if cache_frames is None else int(cache_frames)
+            if mutable:
+                self.max_frames = 0
+            if mutable != self.mutable:
+                self._clear()
+                self.mutable = mutable
+            if signature is not None and signature != self.signature:
+                self._clear()
+            self.signature = signature
             f = int(round(frame))
             start = int(round(start_frame))
             last = self.last
             if last is None or f <= start:
                 return Plan(self, f, RESET, None, True, 0)
+            if mutable:
+                kind = REPEAT if f == last else STEP if f == last + 1 else \
+                    CATCH_UP if f > last else RESTORE
+                return Plan(self, f, kind, self.current, False, 0)
             if f == last:
                 if self.pre is not None and not self.stale:
                     return Plan(self, f, REPEAT, self.pre, False, 1, pre=self.pre)
@@ -268,6 +326,8 @@ class StateStream:
         with _lock:
             f = plan.frame
             self.last_kind = plan.kind
+            if self.mutable:
+                pre = None
             if plan.kind == HOLD:
                 self.last = f
                 self.stale = True

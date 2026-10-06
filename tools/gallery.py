@@ -13,8 +13,12 @@ as Blend Modes B or the Displace map); the generators (Noise, Voronoi, Pattern, 
 rendered standalone. Everything is 480x270. Output (default ``dist/``):
 
 * ``gallery/<Node Name>.png``: one PNG per node (and ``source.png``, the test image),
+* ``gallery/<Node Name> frame <n>.png``: for each Simulate (stateful) node, the frames 1, 10, 30
+  and 60 of a sequence rendered frame by frame through the RENDER stream (scene.frame_set +
+  render; the input of the nodes that take one moves by a few pixels per frame),
 * ``gallery.png``: a contact sheet with each tile labelled with the node name (drawn with a tiny
-  built-in bitmap font, so it needs nothing but numpy).
+  built-in bitmap font, so it needs nothing but numpy), followed by one row per Simulate node
+  with its frame strip.
 
 It reuses the test harness (``tests/lab/harness.py``) for building the node tree and rendering.
 """
@@ -32,12 +36,20 @@ sys.path.insert(0, os.path.join(ROOT, "addons"))
 
 import harness as H  # noqa: E402
 
+compositor_lab = None
 SIZE = (480, 270)
 GENERATORS = {"CompositorNodeLabNoise", "CompositorNodeLabVoronoi", "CompositorNodeLabPattern",
               "CompositorNodeLabFlowField"}
 IMAGE_SOCKETS = ("Image", "A", "B", "Map", "Mask")           # inputs that get the test image
 OUT_SOCKET = {"CompositorNodeLabImageStatistics": "Mean",     # single-value output
-              "CompositorNodeLabPaletteExtract": "Quantized"}
+              "CompositorNodeLabPaletteExtract": "Quantized",
+              "CompositorNodeLabReactionDiffusion": "Color",  # coloured view, not raw V
+              "CompositorNodeLabCellularAutomata": "Color"}
+STRIP_FRAMES = (1, 10, 30, 60)
+STRIP_SETTINGS = {                    # per-node settings of the strips (default: node defaults)
+    "CompositorNodeLabFeedback": ({}, {"Zoom": 1.02, "Rotation": 2.0, "Amount": 0.85}),
+}
+MOVE_PX = 6                           # the moving input shifts by this many pixels per frame
 COLUMNS = 5
 LABEL_H = 22
 GAP = 6
@@ -178,15 +190,23 @@ def draw_text(canvas, text, x, y, scale=2, color=(1.0, 1.0, 1.0)):
         x += gw + scale
 
 
-def contact_sheet(tiles):
-    """tiles: [(label, rgb (h, w, 3) bottom-up)] -> (H, W, 3) bottom-up sheet."""
+def contact_sheet(tiles, strips=()):
+    """tiles: [(label, rgb (h, w, 3) bottom-up)]; strips: [[(label, rgb)]], extra rows (each up to
+    COLUMNS tiles) below the grid -> (H, W, 3) bottom-up sheet."""
     tw, th = SIZE
-    rows = (len(tiles) + COLUMNS - 1) // COLUMNS
+    flat = list(tiles)
+    flat += [None] * (-len(flat) % COLUMNS)
+    for strip in strips:
+        flat += list(strip) + [None] * (COLUMNS - len(strip))
+    rows = len(flat) // COLUMNS
     cell_h = th + LABEL_H
     width = COLUMNS * tw + (COLUMNS + 1) * GAP
     height = rows * cell_h + (rows + 1) * GAP
     sheet = np.full((height, width, 3), 0.08, np.float32)       # top-down while drawing
-    for i, (label, rgb) in enumerate(tiles):
+    for i, tile in enumerate(flat):
+        if tile is None:
+            continue
+        label, rgb = tile
         cx = GAP + (i % COLUMNS) * (tw + GAP)
         cy = GAP + (i // COLUMNS) * (cell_h + GAP)
         sheet[cy:cy + LABEL_H, cx:cx + tw] = 0.16
@@ -196,6 +216,43 @@ def contact_sheet(tiles):
 
 
 # ---------------------------------------------------------------------------
+
+def render_strip(idname, device, src, src2, props, inputs):
+    """Render frames 1..max(STRIP_FRAMES) one after the other (scene.frame_set + render, the
+    RENDER stream) and return {frame: (h, w, 4)} for STRIP_FRAMES. The first image input is
+    replaced each frame by the source shifted MOVE_PX pixels per frame (so nodes that look at the
+    past have something to show); further image inputs stay static."""
+    from compositor_lab.lib import state as lab_state
+
+    lab_state.clear()
+    scene = H.configure_scene(SIZE, device)
+    scene.frame_start, scene.frame_end = 1, 250
+    scene.frame_set(1)
+    cls = next(c for c in compositor_lab.REGISTERED["Simulate"] if c.bl_idname == idname)
+    names = [s.name for s in cls.SOCKETS if hasattr(s, "default") and s.name in IMAGE_SOCKETS]
+    images = {n: (src if i == 0 else src2) for i, n in enumerate(names)}
+    node = H.build_tree(scene, idname, props, inputs, images=images,
+                        out_socket=OUT_SOCKET.get(idname))
+    moving = node.inputs[names[0]].links[0].from_node if names else None
+    out = {}
+    try:
+        for f in range(1, max(STRIP_FRAMES) + 1):
+            scene.frame_set(f)
+            if moving is not None:
+                old = moving.image
+                moving.image = H.make_image("lab_seq_%d" % f,
+                                            np.ascontiguousarray(np.roll(src, MOVE_PX * (f - 1), axis=1)))
+                bpy.data.images.remove(old)
+            res = H.render(scene, allow_errors=True)
+            if f in STRIP_FRAMES:
+                out[f] = res
+                if H.LAST_ERRORS:
+                    raise RuntimeError("; ".join(H.LAST_ERRORS)[:300])
+    finally:
+        H._clear_images()
+        lab_state.clear()
+    return out
+
 
 def filename(label):
     return re.sub(r"[^A-Za-z0-9+]+", "_", label).strip("_")
@@ -211,6 +268,7 @@ def main():
         device = argv[argv.index("--device") + 1].upper()
     os.makedirs(os.path.join(out_dir, "gallery"), exist_ok=True)
 
+    global compositor_lab
     compositor_lab = H.setup(detect=False)
     import pixel_sort_node
     pixel_sort_node.register()
@@ -227,6 +285,7 @@ def main():
     entries.sort(key=lambda e: e[0].lower())
     entries.append(("Pixel Sort", "CompositorNodePixelSort", None))
     failures = []
+    sim_ids = {c.bl_idname for c in compositor_lab.REGISTERED["Simulate"]}
     for label, idname, cls in entries:
         in_names = [s.name for s in getattr(cls, "SOCKETS", ()) if hasattr(s, "default")]
         images = {}
@@ -255,7 +314,25 @@ def main():
         print("rendered %s%s" % (label, "  ERRORS: %s" % errors if errors else ""))
         sys.stdout.flush()
 
-    sheet = contact_sheet(tiles)
+    strips = []
+    for label, idname, cls in entries:
+        if cls is None or idname not in sim_ids:
+            continue
+        props, inputs = STRIP_SETTINGS.get(idname, ({}, {}))
+        try:
+            frames = render_strip(idname, device, src, src2, props, inputs)
+            row = [("%s F%d" % (label, f), srgb8(frames[f])) for f in STRIP_FRAMES]
+        except Exception as ex:
+            failures.append((label + " strip", [repr(ex)]))
+            bad = np.full((h, w, 3), 0.4, np.float32)
+            row = [("%s F%d (ERROR)" % (label, f), bad) for f in STRIP_FRAMES]
+        for (lab, rgb), f in zip(row, STRIP_FRAMES):
+            save_png(os.path.join(out_dir, "gallery", "%s_frame_%d.png" % (filename(label), f)), rgb)
+        strips.append(row)
+        print("rendered strip %s" % label)
+        sys.stdout.flush()
+
+    sheet = contact_sheet(tiles, strips)
     sheet_path = os.path.join(out_dir, "gallery.png")
     save_png(sheet_path, sheet)
     print("wrote %s (%d tiles) and %s" % (sheet_path, len(tiles), os.path.join(out_dir, "gallery")))

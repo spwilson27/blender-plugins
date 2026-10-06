@@ -171,7 +171,7 @@ class CompositorNodeLabCellularAutomata(StatefulNode, LabNode, bpy.types.Composi
             "moore": self.neighbourhood == 'MOORE', "wrap": self.edges == 'WRAP',
             "gens": min(max(self.in_int(inputs, "Generations per Frame", 1), 0), 1024),
             "cell": cell, "grid": np_ca.grid_size(ctx.size, cell),
-            "random": not self._linked(inputs, "Seed"),
+            "random": not self.in_is_image(inputs, "Seed"),
             "threshold": F32(self.in_float(inputs, "Threshold", 0.5)),
             "density": F32(self.in_float(inputs, "Density", 0.35)),
             "seed": int(self.in_int(inputs, "Random Seed", 0)),
@@ -181,21 +181,9 @@ class CompositorNodeLabCellularAutomata(StatefulNode, LabNode, bpy.types.Composi
                        for n in ("color_a", "color_b", "color_c", "background")],
         }
 
-    @staticmethod
-    def _linked(inputs, name):
-        v = inputs.get(name)
-        return v is not None and not isinstance(v, (int, float, bool, tuple, list))
-
     def _plan(self, ctx, grid):
-        """The plan, turned into a reset when the stored state has another grid size (the Cell
-        Size changed since it was made)."""
-        plan = self.advance(ctx)
-        st = plan.state
-        if st is not None:
-            shape = tuple(st[0].shape) if isinstance(st, tuple) else (int(st.height), int(st.width))
-            if shape != (grid[1], grid[0]):
-                plan.init, plan.steps, plan.state, plan.pre = True, 0, None, None
-        return plan
+        """The plan; the state restarts when the grid size changes (Cell Size, output size)."""
+        return self.advance(ctx, signature=tuple(grid))
 
     # -- CPU -----------------------------------------------------------------
     def _cpu_mask(self, inputs, ctx, p):
@@ -203,7 +191,7 @@ class CompositorNodeLabCellularAutomata(StatefulNode, LabNode, bpy.types.Composi
         v = inputs.get("Inject")
         if v is None:
             return None
-        if not self._linked(inputs, "Inject"):
+        if not self.in_is_image(inputs, "Inject"):
             return None if not _luma(self.in_color(inputs, "Inject", (0, 0, 0, 1))) > F32(0.5) \
                 else np.ones(p["grid"][::-1], bool)
         img = self.in_image_array(inputs, "Inject", ctx.shape, 4)
@@ -300,7 +288,7 @@ class CompositorNodeLabCellularAutomata(StatefulNode, LabNode, bpy.types.Composi
 
     def _inject_value(self, inputs):
         """The Inject input for the GPU (texture / single value), or None if it paints nothing."""
-        if self._linked(inputs, "Inject"):
+        if self.in_is_image(inputs, "Inject"):
             return inputs["Inject"]
         v = self.in_color(inputs, "Inject", (0.0, 0.0, 0.0, 1.0))
         return v if _luma(v) > F32(0.5) else None

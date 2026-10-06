@@ -206,6 +206,45 @@ now[0] = 120.0
 S.get_stream("c", "RENDER", (8, 8), False)
 check(S.stream_count() == 2 and S.streams_for("a") == [], "unused streams expire after the ttl")
 
+# --- signature / meta / plan.reset / mutable ---------------------------------------------
+st = fresh()
+seq(st, range(1, 6))
+st.meta["x"] = 1
+p = st.advance(6, 1, None, None, signature="A")
+check(p.kind == "RESET" and st.meta == {}, "first signature resets the stream and clears meta")
+p.run(lambda: P(100), lambda s: P(s.v + 1))
+st.meta["x"] = 1
+p = st.advance(7, 1, None, None, signature="A")
+check(p.kind == "STEP" and st.meta == {"x": 1}, "same signature carries on")
+p.run(lambda: P(100), lambda s: P(s.v + 1))
+p = st.advance(8, 1, None, None, signature="B")
+check(p.kind == "RESET" and p.init and st.cached_frames() == [], "changed signature resets")
+p.run(lambda: P(100), lambda s: P(s.v + 1))
+p = st.advance(9, 1, None, None, signature="B")
+check(p.kind == "STEP", "...and the new signature sticks")
+p.run(lambda: P(100), lambda s: P(s.v + 1))
+p = st.advance(10)
+check(p.kind == "STEP", "no signature given: no reset")
+p.reset()
+check(p.kind == "RESET" and p.init and p.steps == 0 and p.state is None
+      and st.cached_frames() == [], "plan.reset() turns the plan into a reset")
+check(p.run(lambda: P(100), lambda s: P(s.v + 1)).v == 100 and st.last == 10,
+      "...and run() initialises")
+
+st = fresh()
+p = st.advance(1, 1, mutable=True)
+ring = p.run(lambda: P(7, 50), None)
+check(p.kind == "RESET" and ring.v == 7 and st.cached_frames() == [], "mutable: reset builds the payload")
+kinds = []
+for f in (2, 2, 3, 9, 4, 1, 2):
+    p = st.advance(f, 1, mutable=True)
+    got = p.run(lambda: P(7, 50), None)
+    kinds.append((p.kind, got is ring or p.kind == "RESET"))
+    ring = got
+check([k for k, _ in kinds] == ["STEP", "REPEAT", "STEP", "CATCH_UP", "RESTORE", "RESET", "STEP"]
+      and all(ok for _, ok in kinds), "mutable: kinds %s, same payload, no holds" % [k for k, _ in kinds])
+check(st.cached_frames() == [] and st.nbytes == 50, "mutable: no frame cache (%d bytes)" % st.nbytes)
+
 print("=" * 60)
 if FAILURES:
     raise AssertionError("%d failure(s):\n  %s" % (len(FAILURES), "\n  ".join(FAILURES)))

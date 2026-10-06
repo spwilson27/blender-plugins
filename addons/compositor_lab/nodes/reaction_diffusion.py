@@ -28,7 +28,7 @@ from bpy.props import EnumProperty, FloatProperty, FloatVectorProperty, IntPrope
 
 from ..lib import gpu as lab_gpu, np_rd, np_sampling
 from ..lib.glsl import rd as glsl_rd
-from ..lib.node import In, LabNode, Out, StatefulNode, is_single
+from ..lib.node import In, LabNode, Out, StatefulNode
 
 MENU = "Simulate"
 
@@ -136,19 +136,10 @@ class CompositorNodeLabReactionDiffusion(StatefulNode, LabNode, bpy.types.Compos
             "low": F32(lo), "inv": F32(1.0 / max(hi - lo, 1e-6)),
         }
 
-    def _prepare_state(self, ctx):
-        """Restart the stream when the simulation scale changed (other state shape)."""
-        st = self.state(ctx)
-        sig = int(self.scale)
-        if getattr(st, "rd_sig", sig) != sig:
-            st.reset()
-        st.rd_sig = sig
-
     # -- CPU -----------------------------------------------------------------
     def _cpu_map(self, inputs, name, p, ctx):
         """None (unlinked: value scalar returned separately), else the map at simulation size."""
-        raw = inputs.get(name)
-        if raw is None or is_single(raw):
+        if not self.in_is_image(inputs, name):
             return None, F32(self.in_float(inputs, name, 1.0))
         arr = self.in_image_array(inputs, name, ctx.shape, 1)
         arr = np.nan_to_num(np.asarray(arr, F32), nan=1.0, posinf=4.0, neginf=0.0)
@@ -166,8 +157,7 @@ class CompositorNodeLabReactionDiffusion(StatefulNode, LabNode, bpy.types.Compos
         feed = p["feed"] * fval if fmap is None else (p["feed"] * fmap).astype(F32)
         kill = p["kill"] * kval if kmap is None else (p["kill"] * kmap).astype(F32)
 
-        raw_seed = inputs.get("Seed")
-        linked = raw_seed is not None and not is_single(raw_seed)
+        linked = self.in_is_image(inputs, "Seed")
 
         def init():
             if linked:
@@ -186,8 +176,7 @@ class CompositorNodeLabReactionDiffusion(StatefulNode, LabNode, bpy.types.Compos
             return np_rd.iterate(s[0], s[1], p["n"], feed, kill, p["du"], p["dv"], p["dt"],
                                  p["edge"])
 
-        self._prepare_state(ctx)
-        u, v = self.advance(ctx).run(init, step)
+        u, v = self.advance(ctx, signature=self.scale).run(init, step)
         uv = np.stack([u, v], axis=-1)
         if (sw, sh) != (p["w"], p["h"]):
             xs, ys = np_rd.resample_coords(p["w"], p["h"], sw, sh)
@@ -270,8 +259,7 @@ class CompositorNodeLabReactionDiffusion(StatefulNode, LabNode, bpy.types.Compos
             n = p["n"] * self.preroll
             return self._gpu_iterate(s, n, p, maps) if n else s
 
-        self._prepare_state(ctx)
-        final = self.advance(ctx).run(init, lambda s: self._gpu_iterate(s, p["n"], p, maps))
+        final = self.advance(ctx, signature=self.scale).run(init, lambda s: self._gpu_iterate(s, p["n"], p, maps))
         up = (F32(p["sw"] / p["w"]), F32(p["sh"] / p["h"]))
         lab_gpu.kernel(
             glsl_rd.output_body(dst["V"] is not None, dst["U"] is not None,

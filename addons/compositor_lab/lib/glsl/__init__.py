@@ -8,7 +8,7 @@ source of those modules and their dependencies, each once, dependencies first.""
 import importlib
 
 NAMES = ("hash", "color", "noise", "blend", "exact", "pattern", "field", "dither", "sampling",
-         "reduce", "distance")
+         "reduce", "distance", "ca", "rd", "history")
 
 
 def _module(name):

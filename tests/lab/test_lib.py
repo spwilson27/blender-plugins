@@ -488,6 +488,27 @@ def test_single_outputs():
         bpy.utils.unregister_class(CompositorNodeLabTestSingle)
 
 
-for fn in (test_single_outputs, test_glsl_sources, test_hash, test_color, test_noise, test_blend, test_parity):
+@H.guard("ctx.report")
+def test_ctx_report():
+    from compositor_lab.lib import node as lab_node
+
+    class Fake:
+        frame, fps, size, use_gpu = 3.0, 24.0, (8, 4), False
+        calls = []
+
+        def report(self, message, level='INFO'):
+            self.calls.append((message, level))
+
+    ctx = lab_node.make_ctx(Fake(), (8, 4), False)
+    ctx.report("hello", 'WARNING')
+    ctx.report("info")
+    H.check(Fake.calls == [("hello", 'WARNING'), ("info", 'INFO')], "ctx.report forwards: %s" % Fake.calls)
+    old = lab_node.make_ctx(object(), (8, 4), False)
+    old.report("ignored")
+    lab_node.make_ctx(None, (8, 4), False).report("ignored")
+    H.check(True, "ctx.report is a no-op without context.report")
+
+
+for fn in (test_ctx_report, test_single_outputs, test_glsl_sources, test_hash, test_color, test_noise, test_blend, test_parity):
     fn()
 H.finish()
