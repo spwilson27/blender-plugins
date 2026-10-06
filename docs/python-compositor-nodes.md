@@ -219,6 +219,67 @@ Only `CompositorNode`'s registration is touched. Custom groups keep their own pa
   implements both methods (CPU: numpy invert; GPU: compute-shader invert).
 - Tests live in this repository's `tests/` directory.
 
+## F1–F3: generator domain, evaluation context, single value outputs
+
+Three framework additions (see `plan-stateless-nodes.md` section 0). Tests live in
+`tests/framework/`.
+
+### F1. Generator domain
+
+The compute domain is still the domain of the image input with the highest priority. If the node
+has no such input (no sockets, or all inputs are unlinked / single values), the outputs use the
+compositing domain (render resolution) instead of 1x1. Implemented as
+`PythonNodeOperation::compute_domain()`, which applies the same criteria as
+`Operation::compute_domain` to detect that case. A node with an image input is unchanged.
+
+### F2. Evaluation context
+
+The `context` object is passed as a 4th argument if the 4th positional parameter of
+`evaluate_cpu` / `evaluate_gpu` (counting `self`) is named `context`, is required (has no default),
+or the function takes `*args`. So `(self, inputs, outputs, context)`, `(..., context=None)`,
+`(..., ctx)` and `(self, inputs, outputs, *args)` receive it. A 4th parameter that has a default and
+another name (the `_orig=_orig` idiom) is not filled and keeps its default, and keyword-only
+parameters don't count. Methods with 3 parameters are called exactly as before.
+
+`context` is a `types.SimpleNamespace`:
+
+| attribute | type | value |
+|---|---|---|
+| `frame` | float | scene frame including the subframe (`cfra + subframe`) |
+| `fps` | float | `frs_sec / frs_sec_base` |
+| `time` | float | seconds, `frame / fps` (not offset by the start frame) |
+| `size` | tuple `(w, h)` | size of the compute domain in pixels |
+| `use_gpu` | bool | true if the compositor evaluates on the GPU (both methods get the same value for a given render) |
+
+The values are gathered in C++ (`EvalInfo` in `NOD_composite_python.hh`), so the method never has
+to read `bpy.context` off the main thread.
+
+### F3. Single value outputs
+
+A class attribute `single_value_outputs` (any iterable of output socket identifiers, for example
+a set) makes those outputs single values instead of images:
+
+```python
+class MyStats(bpy.types.CompositorNode):
+    single_value_outputs = {"Mean", "Palette"}
+
+    def evaluate_cpu(self, inputs, outputs):       # also in evaluate_gpu
+        mean = outputs["Mean"]                      # bpy_compositor.Buffer, shape (1,)
+        np.asarray(mean)[0] = 0.5
+        np.asarray(outputs["Palette"])[:] = (1.0, 0.0, 0.0, 1.0)   # shape (4,)
+```
+
+- In both CPU and GPU mode Python gets a writable `bpy_compositor.Buffer` of shape `(channels,)`
+  (1 dimension; Float 1, Float2 2, Float3 3, Float4/Color 4, Int 1, Int2 2, Bool 1) instead of an
+  image or a `GPUTexture`. The format is `f` (float/color), `i` (int) or `?` (bool).
+- The buffer is zero initialized. After a successful call it is stored as the single value of the
+  output (Float, Float2, Float3, Float4, Color, Int, Int2, Bool).
+- If the method raises, these outputs have the default value like all the others.
+- Outputs that nothing consumes are omitted from `outputs` as usual. Identifiers that do not
+  exist are ignored.
+- A node with only single value outputs and no image inputs is a valid use of F1 (the domain is
+  not used by those outputs).
+
 ## Threading / GIL notes
 
 - Blender releases the GIL after startup (`bpy_interface.cc:~648`), so

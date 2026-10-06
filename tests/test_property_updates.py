@@ -27,14 +27,19 @@ psn.register()
 W, H = 96, 48
 calls = []
 cls = psn.CompositorNodePixelSort
-for _name in ("evaluate_cpu", "evaluate_gpu"):
-    _orig = getattr(cls, _name)
 
-    def _wrap(self, inputs, outputs, _orig=_orig, _name=_name):
+
+def _make_wrap(_orig, _name):
+    # Exactly three parameters: a method with a 4th (even defaulted) one is passed the context.
+    def _wrap(self, inputs, outputs):
         calls.append(_name)
         return _orig(self, inputs, outputs)
 
-    setattr(cls, _name, _wrap)
+    return _wrap
+
+
+for _name in ("evaluate_cpu", "evaluate_gpu"):
+    setattr(cls, _name, _make_wrap(getattr(cls, _name), _name))
 
 scene = bpy.context.scene
 scene.render.resolution_x, scene.render.resolution_y = W, H
