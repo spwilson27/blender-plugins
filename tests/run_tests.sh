@@ -18,10 +18,21 @@ fi
 LOG_DIR="$(mktemp -d)"
 failures=0
 
+# `timeout` is not part of macOS, fall back to perl (which is).
+with_timeout() {
+  local seconds="$1"
+  shift
+  if command -v timeout > /dev/null; then
+    timeout "$seconds" "$@"
+  else
+    perl -e 'alarm shift; exec @ARGV or die "exec failed: $!"' "$seconds" "$@"
+  fi
+}
+
 run() {
   local name="$1"
   shift
-  if timeout 600 "$BLENDER" "$@" > "$LOG_DIR/$name.log" 2>&1 &&
+  if with_timeout 600 "$BLENDER" "$@" > "$LOG_DIR/$name.log" 2>&1 &&
      ! grep -q "internal state bug" "$LOG_DIR/$name.log"; then
     echo "PASS  $name"
   else

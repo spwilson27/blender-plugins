@@ -59,6 +59,16 @@ class MyNode(bpy.types.CompositorNode):
 tests/run_tests.sh /path/to/Blender
 ```
 
+The GUI tests open Blender windows. To keep them off your own screen, run the suite on another
+Mac over SSH. This needs key-based login, and a user logged in to that Mac's desktop:
+
+```bash
+tests/run_remote.sh other-mac.local /path/to/Blender.app
+```
+
+It syncs the app bundle and the working tree (including uncommitted changes), then runs the suite
+there.
+
 The suite covers:
 - installing into a clean config
 - the reference implementation
