@@ -68,6 +68,7 @@ for test_file in framework/test_*.py lab/test_*.py; do
   run "${suite/_test_/_}"  -b "${ARGS[@]}" "$test_file"
 done
 run property_updates       "${ARGS[@]}" test_property_updates.py
+run eval_kind_gui          "${ARGS[@]}" test_eval_kind_gui.py
 run thread_stress          "${ARGS[@]}" test_thread_stress.py
 
 echo "$failures failure(s)"

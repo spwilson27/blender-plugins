@@ -250,6 +250,21 @@ parameters don't count. Methods with 3 parameters are called exactly as before.
 | `time` | float | seconds, `frame / fps` (not offset by the start frame) |
 | `size` | tuple `(w, h)` | size of the compute domain in pixels |
 | `use_gpu` | bool | true if the compositor evaluates on the GPU (both methods get the same value for a given render) |
+| `kind` | str | the evaluation kind, see below: `'RENDER'`, `'BACKDROP'`, `'VIEWPORT'` or `'SEQUENCER'` |
+| `is_animation_playing` | bool | true while the animation plays in the UI, see below |
+| `frame_start`, `frame_end` | int | the render frame range (`scene.frame_start` / `frame_end`) of the scene the compositor context evaluates |
+
+`kind` is derived in C++ from the `compositor::Context` subclass (`get_evaluation_kind()`):
+
+| `kind` | evaluation | `is_animation_playing` |
+|---|---|---|
+| `'RENDER'` | the render pipeline: F12, `-f` / `-a`, `bpy.ops.render.render()` | always `False` |
+| `'BACKDROP'` | the interactive compositor job of the node editor backdrop (the render context with the interactive flag) | the state when the job was scheduled (playback, not scrubbing) |
+| `'VIEWPORT'` | the viewport compositor draw engine (3D view, `use_compositor`) | the state at draw time (playback, not scrubbing) |
+| `'SEQUENCER'` | the compositor modifier of a sequencer strip | always `False` |
+
+These streams are interleaved (the backdrop, viewport and render can all evaluate the same node),
+so stateful nodes should include `kind` in their state key.
 
 The values are gathered in C++ (`EvalInfo` in `NOD_composite_python.hh`), so the method never has
 to read `bpy.context` off the main thread.
