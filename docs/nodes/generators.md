@@ -69,10 +69,9 @@ Value), Kernel (Box, Triangle). Outputs: Color (LIC), Streaks (grey), Field (RG 
   mean abs diff <= 1.3e-4, <= 1.8% of pixels over 5e-4, max 0.02 colour (0.25 for the high-contrast
   Streaks of a random-noise gradient image). Tests assert exactly that.
 
-## Notes / gaps
+## Notes
 
-* GLSL gotchas found: Blender's MSL translation rejects forward declarations of functions and
-  the identifier `kernel` (even in comments); lib code that needs a texture reads `s_<Name>`
-  directly because `pointwise` defines `in_<Name>` after the libs.
-* `lib/glsl/__init__.py` `NAMES` does not list the new `pattern` / `field` modules (they resolve
-  fine by name).
+* GLSL gotchas found (Blender's MSL translation rejects forward declarations of functions and the
+  identifier `kernel`, even in comments) are collected in `addons/compositor_lab/lib/README.md`.
+  Lib code that needs an input may call `in_<Name>`: `gpu.kernel` declares the accessors before the
+  libs.

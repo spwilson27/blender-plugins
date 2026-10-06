@@ -26,14 +26,12 @@ quantised to 1/1024. ``Animate`` adds ``floor(time * rate)`` to the seed.
 """
 
 import math
-import sys
-import types
 
 import bpy
 import numpy as np
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
 
-from ..lib import glsl, gpu as lab_gpu, np_noise
+from ..lib import gpu as lab_gpu, np_noise
 from ..lib.node import In, LabNode, Out
 
 MENU = "Utility"
@@ -193,19 +191,6 @@ ivec2 ps_source(ivec2 p, ivec2 res, int mode, int N, int iters, uint aq, uint ss
   return p;
 }
 '''
-
-
-def _register_glsl():
-    """Make the node-local GLSL available to ``gpu.pointwise(libs=("pixel_shuffle",))``
-    (``glsl.resolve`` imports ``lib/glsl/<name>``; this module is registered under that name)."""
-    name = glsl.__name__ + ".pixel_shuffle"
-    mod = types.ModuleType(name)
-    mod.DEPS = ("hash",)
-    mod.SOURCE = _GLSL
-    sys.modules[name] = mod
-
-
-_register_glsl()
 
 _BODY = """
     out_Image = in_Image(ps_source(texel, res, ps_mode, ps_n, ps_iters, uint(ps_aq), uint(ps_ss)));
@@ -444,7 +429,7 @@ class CompositorNodeLabPixelShuffle(LabNode, bpy.types.CompositorNode):
             uniforms={"ps_mode": ("int", p["mode"]), "ps_n": ("int", p["n"]),
                       "ps_iters": ("int", p["iters"]), "ps_aq": ("int", p["aq"]),
                       "ps_ss": ("int", ss)},
-            libs=("hash", "pixel_shuffle"))
+            libs=("hash",), functions=_GLSL)
 
 
 NODE_CLASSES = [CompositorNodeLabPixelShuffle]

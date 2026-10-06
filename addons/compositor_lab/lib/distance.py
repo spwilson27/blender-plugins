@@ -19,8 +19,6 @@ Use ``cap_for(radius)`` as the ``cap`` of the CPU version for bit-identical resu
 ``scratch(w, h, role, fmt)``: cached (per thread) scratch GPUTexture for multi-pass nodes.
 """
 
-import threading
-
 import numpy as np
 
 from . import gpu as lab_gpu
@@ -114,31 +112,8 @@ def d_lt(d2, b):
 # GPU
 # ---------------------------------------------------------------------------
 
-_tls = threading.local()
-
-
-def scratch(width, height, role="a", fmt="R32F"):
-    """Cached scratch texture (per thread, size, role, format). Distinct ``role`` strings for
-    textures alive at the same time within one node evaluation."""
-    import gpu
-
-    cache = getattr(_tls, "scratch", None)
-    if cache is None:
-        cache = _tls.scratch = {}
-    key = (int(width), int(height), role, fmt)
-    tex = cache.get(key)
-    if tex is None:
-        if len(cache) >= 24:
-            cache.clear()
-        tex = gpu.types.GPUTexture((int(width), int(height)), format=fmt)
-        cache[key] = tex
-    return tex
-
-
-def clear_cache():
-    cache = getattr(_tls, "scratch", None)
-    if cache:
-        cache.clear()
+scratch = lab_gpu.scratch      # kept for the nodes using ``distance.scratch(w, h, role, fmt)``
+clear_cache = lab_gpu.clear_cache
 
 
 def gpu_edt_sq(src, dst, radius, polarity=1, threshold=0.5):

@@ -31,32 +31,71 @@ Install it with *Preferences ▸ Add-ons ▸ Install from Disk*, choosing `addon
 
 ### Compositor Lab (`addons/compositor_lab/`)
 
-A package of experimental nodes (Add ▸ Lab ▸ Filter / Generate / Utility), each with a numpy CPU
+A package of 21 experimental nodes (Add ▸ Lab ▸ Filter / Generate / Utility), each with a numpy CPU
 path and a GPU compute path, built on a shared library (`lib/`: node base class, GPU kernel
-helper, GLSL snippets with numpy twins for hashing, noise, colour spaces and blend modes). Needs
-the generator domain and evaluation context features of the custom build (see
-[docs/plan-stateless-nodes.md](docs/plan-stateless-nodes.md)). One broken node module is logged and
-does not stop the others from registering.
+builder, GLSL snippets with numpy twins for hashing, noise, colour, blend modes, sampling,
+distance transforms and more). Needs the generator domain and evaluation context features of the
+custom build (see [docs/plan-stateless-nodes.md](docs/plan-stateless-nodes.md)). One broken node
+module is logged and does not stop the others from registering. How to write a node, the kernel
+builder and the GLSL / Metal gotchas: [addons/compositor_lab/lib/README.md](addons/compositor_lab/lib/README.md).
 
 Install: `python3 tools/build_zip.py` writes `dist/compositor_lab.zip`; use *Preferences ▸
-Add-ons ▸ Install from Disk* on that zip.
+Add-ons ▸ Install from Disk* on that zip. `tools/gallery.py` renders every node with its default
+settings into `dist/gallery.png` (see below).
 
-Nodes so far:
-- **Noise** (Generate): value, Perlin, simplex, Worley F1 and F2-F1; fBm (octaves, lacunarity,
-  gain), ridged, domain warp, scale, offset, seed. The third dimension is `Phase + time * Speed`,
-  so it animates. Outputs Value and a decorrelated per-channel Color.
-- **Blend Modes+** (Filter): 27 modes on premultiplied inputs A (backdrop) and B (source) with
-  Fac: Normal, Multiply, Screen, Overlay, Soft Light (W3C and Pegtop), Hard/Vivid/Linear/Pin
-  Light, Hard Mix, Color Dodge/Burn, Linear Dodge/Burn, Subtract, Divide, Difference, Exclusion,
-  Darken/Lighten, Darker/Lighter Color and OKLCh Hue/Saturation/Color/Luminosity.
+Node details (sockets, properties, algorithms, tolerances) are in the linked files under
+[docs/nodes/](docs/nodes/).
+
+**Filter**
+
+| Node | What it does | Details |
+|---|---|---|
+| Blend Modes+ | 27 Photoshop-style blend modes on premultiplied A / B with Fac, including OKLCh Hue / Saturation / Color / Luminosity | this README |
+| Posterize+ | Reduce colours to a few levels, with gamma, lightness-only mode and dithering | [filters-a](docs/nodes/filters-a.md#posterize-compositornodelabposterize) |
+| Gradient Map | Map luminance or a channel through a preset or custom (up to 6 stops) gradient | [filters-a](docs/nodes/filters-a.md#gradient-map-compositornodelabgradientmap) |
+| Halftone | Print halftone: CMYK or mono dots, lines or cross-hatch | [filters-a](docs/nodes/filters-a.md#halftone-compositornodelabhalftone) |
+| Glitch | RGB split, block displacement, scanline jitter and bit-crush, animated | [filters-a](docs/nodes/filters-a.md#glitch-compositornodelabglitch) |
+| Kuwahara | Anisotropic Kuwahara: painterly smoothing that follows edges | [filters-b](docs/nodes/filters-b.md#kuwahara-compositornodelabkuwahara) |
+| Displace / Glass | Displace by a map (offset or glass refraction) with edge modes and dispersion | [filters-b](docs/nodes/filters-b.md#displace--glass-compositornodelabdisplace) |
+| Liquify | Twirl and pinch / bulge warps around a point | [filters-b](docs/nodes/filters-b.md#liquify-compositornodelabliquify) |
+| Edge Stylise | XDoG ink lines, Sobel edges or an outline around the alpha | [filters-b](docs/nodes/filters-b.md#edge-stylise-compositornodelabedgestylise) |
+
+**Generate**
+
+| Node | What it does | Details |
+|---|---|---|
+| Noise | Value, Perlin, simplex, Worley (F1, F2-F1); fBm, ridged, domain warp; animated via Phase + time * Speed; Value and per-channel Color outputs | this README |
+| Voronoi / Mosaic | Voronoi cells, distance fields, edges and stained-glass mosaic | [generators](docs/nodes/generators.md#voronoi--mosaic-compositornodelabvoronoi) |
+| Pattern | Anti-aliased stripes, checker, dots, hex grid, truchet, moire, rings | [generators](docs/nodes/generators.md#pattern-compositornodelabpattern) |
+| Flow Field | Line integral convolution and streamlines along a vector field | [generators](docs/nodes/generators.md#flow-field-compositornodelabflowfield) |
+
+**Utility**
+
+| Node | What it does | Details |
+|---|---|---|
+| Expression | Per-pixel expression (safe Python-syntax subset) on CPU or GPU | [utility-a](docs/nodes/utility-a.md#expression-compositornodelabexpression) |
+| Image Statistics | Min, max, mean, luminance mean, standard deviation, percentile (single-value outputs) | [utility-a](docs/nodes/utility-a.md#image-statistics-compositornodelabimagestatistics) |
+| Auto Levels | Stretch contrast between low / high percentiles | [utility-a](docs/nodes/utility-a.md#auto-levels-compositornodelabautolevels) |
+| Palette Extract | Up to 8 dominant colours with k-means (single-value outputs) | [utility-a](docs/nodes/utility-a.md#palette-extract-compositornodelabpaletteextract) |
+| Seamless Tile | Make an image tile seamlessly (offset cross-fade or mirror) | [utility-b](docs/nodes/utility-b.md#seamless-tile) |
+| Mask Tools | Threshold, grow / shrink, feather, outline, invert with exact distances | [utility-b](docs/nodes/utility-b.md#mask-tools) |
+| Pixel Shuffle | Seeded shuffle of pixels in blocks, swapped pairs or whole blocks | [utility-b](docs/nodes/utility-b.md#pixel-shuffle) |
+| Line Sort | Sort whole rows or columns by a statistic (mean luminance, hue, variance...) | [utility-b](docs/nodes/utility-b.md#line-sort) |
 
 Tests: `tests/lab/` (auto-run as suites `lab_*`), for example
-`tests/run_remote.sh HOST /path/to/Blender.app blender-test-lab 'lab_*'`.
+`tests/run_remote.sh HOST /path/to/Blender.app blender-test-lab 'lab_*'`. A node that raises
+during evaluation (including a GPU shader that does not compile) fails the test that rendered it.
+
+Gallery: `tools/gallery.py` (run it with `Blender -b --factory-startup --python tools/gallery.py`;
+it needs a GPU device) renders every Lab node and Pixel Sort at 480x270 with default settings on a
+shared test image, generators standalone, into `dist/gallery/*.png` and a labelled contact sheet
+`dist/gallery.png`.
 
 ## Writing your own node
 
 [`templates/custom_compositor_node.py`](templates/custom_compositor_node.py) is a minimal node that
-implements both evaluation paths. The short version:
+implements both evaluation paths; for nodes in the Lab package see
+[addons/compositor_lab/lib/README.md](addons/compositor_lab/lib/README.md). The short version:
 
 ```python
 class MyNode(bpy.types.CompositorNode):

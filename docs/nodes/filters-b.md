@@ -14,7 +14,7 @@ row 0 = bottom. Every node has a vectorised numpy CPU path and a GPU compute pat
     centres at `i + 0.5` (sampling at `(x + 0.5, y + 0.5)` is exact)
   * `sobel` (per-pixel gradients, divided by 8), `gaussian_weights`, `blur_axis`, `blur_gaussian`
     (separable, radius `ceil(3 sigma)`)
-  * GPU: `kernel(body, outputs, samplers, uniforms, libs)` is a `pointwise` variant where every input
+  * GPU: `gpu.kernel(..., sampling=True)` (wrapper `sampling.kernel(body, outputs, samplers, uniforms, libs)`) is a `pointwise` variant where every input
     is a sampler and gets `lab_fetch_N`, `lab_px_N(p, mode)`, `lab_bilinear_N(pos, mode)`,
     `lab_bicubic_N(pos, mode)`, `lab_sobel_N(p, mode, gx, gy)`, `lab_size_N()` (N = input name);
     unlinked values become cached 1x1 textures. `scratch(w, h, role)` gives cached RGBA32F scratch

@@ -80,7 +80,7 @@ class CompositorNodeLabLiquify(LabNode, bpy.types.CompositorNode):
         In("Center X", "FLOAT", 0.5),
         In("Center Y", "FLOAT", 0.5),
         In("Radius", "FLOAT", 0.4),
-        In("Strength", "FLOAT", 0.5),
+        In("Strength", "FLOAT", 2.0),
         In("Falloff", "FACTOR", 1.0),
         Out("Image", "COLOR"),
     ]

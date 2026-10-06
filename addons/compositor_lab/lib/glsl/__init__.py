@@ -7,14 +7,16 @@ source of those modules and their dependencies, each once, dependencies first.""
 
 import importlib
 
-NAMES = ("hash", "color", "noise", "blend", "exact")
+NAMES = ("hash", "color", "noise", "blend", "exact", "pattern", "field", "dither", "sampling",
+         "reduce", "distance")
 
 
 def _module(name):
     return importlib.import_module(__name__ + "." + name)
 
 
-def resolve(*names):
+def resolve_order(*names):
+    """Module names of ``names`` and their dependencies, each once, dependencies first."""
     seen = []
 
     def visit(n):
@@ -27,4 +29,8 @@ def resolve(*names):
 
     for n in names:
         visit(n)
-    return "\n".join(_module(n).SOURCE for n in seen)
+    return seen
+
+
+def resolve(*names):
+    return "\n".join(_module(n).SOURCE for n in resolve_order(*names))

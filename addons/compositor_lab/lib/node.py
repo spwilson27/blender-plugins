@@ -35,6 +35,8 @@ from collections import namedtuple
 
 import numpy as np
 
+from . import errors as _errors
+
 # Socket type name -> bpy socket idname.
 SOCKET_TYPES = {
     "FLOAT": "NodeSocketFloat",
@@ -155,12 +157,30 @@ class LabNode:
 
     # -- evaluation ------------------------------------------------------
     def evaluate_cpu(self, inputs, outputs, context=None):
-        ctx = make_ctx(context, self.output_size(outputs), False)
-        self.cpu(inputs, outputs, ctx)
+        try:
+            ctx = make_ctx(context, self.output_size(outputs), False)
+            self.cpu(inputs, outputs, ctx)
+        except Exception as ex:
+            self._record_error("cpu", ex)
+            raise
 
     def evaluate_gpu(self, inputs, outputs, context=None):
-        ctx = make_ctx(context, self.output_size(outputs), True)
-        self.gpu(inputs, outputs, ctx)
+        try:
+            ctx = make_ctx(context, self.output_size(outputs), True)
+            self.gpu(inputs, outputs, ctx)
+        except Exception as ex:
+            self._record_error("gpu", ex)
+            raise
+
+    def _record_error(self, backend, ex):
+        """Blender turns an exception in evaluation into the node's info message and default
+        outputs; keep a copy in ``lib/errors.py`` so tests can fail on it. (A shader compile
+        error is already recorded by ``gpu.compile_shader``, with the GLSL error.)"""
+        from .errors import LabShaderError
+
+        if not isinstance(ex, LabShaderError):
+            _errors.record("%s %s evaluation failed: %s: %s" % (
+                type(self).__name__, backend, type(ex).__name__, ex))
 
     def cpu(self, inputs, outputs, ctx):
         raise NotImplementedError("%s has no CPU implementation" % type(self).__name__)

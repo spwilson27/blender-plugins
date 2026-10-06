@@ -164,12 +164,7 @@ def _read(tex):
     return arr.reshape(h, w, -1)
 
 
-def _set(fn, name, *args):
-    try:
-        fn(name, *args)
-    except ValueError as ex:
-        if "not found" not in str(ex):
-            raise
+_set = lab_gpu.set_if_present
 
 
 def _nt(w, h, tile=TILE):
@@ -181,8 +176,6 @@ def _kernel(name, source, samplers, images, consts, local_size):
     key = ("lab_reduce", name, NBINS, TILE)
 
     def factory():
-        import gpu
-
         src = _glsl.resolve(*_src.DEPS) + "\n" + source.replace("@TILE@", str(TILE)).replace(
             "@NBINS@", str(NBINS))
         info = lab_gpu.create_info(local_size)
@@ -192,8 +185,7 @@ def _kernel(name, source, samplers, images, consts, local_size):
             info.image(i, fmt, kind, n, qualifiers=set(q))
         for n, t in consts:
             info.push_constant(t, n)
-        info.compute_source(src)
-        return gpu.shader.create_from_info(info)
+        return lab_gpu.compile_shader(info, src, "reduce " + name)
 
     return lab_gpu.get_shader(key, factory)
 

@@ -145,7 +145,7 @@ class CompositorNodeLabKuwahara(LabNode, bpy.types.CompositorNode):
 
     SOCKETS = [
         In("Image", "COLOR", (0.5, 0.5, 0.5, 1.0)),
-        In("Radius", "FLOAT", 4.0),
+        In("Radius", "FLOAT", 8.0),
         In("Sharpness", "FLOAT", 8.0),
         In("Anisotropy", "FLOAT", 1.0),
         Out("Image", "COLOR"),

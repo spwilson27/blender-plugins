@@ -243,12 +243,12 @@ def test_compiler_numpy():
         H.compare("numpy backend %s vs float64 reference" % text, out, r, REF_ATOL, rtol=REF_ATOL, quiet=True)
 
 
-def render(device, text, size=SIZE, images=None, inputs=None, frame=None):
+def render(device, text, size=SIZE, images=None, inputs=None, frame=None, allow_errors=False):
     if images is None:
         return H.render_generator(NODE, device, size, props={"expression": text}, inputs=inputs,
-                                  frame=frame)
+                                  frame=frame, allow_errors=allow_errors)
     return H.render_node(NODE, device, size, props={"expression": text}, images=images,
-                         inputs=inputs, frame=frame)
+                         inputs=inputs, frame=frame, allow_errors=allow_errors)
 
 
 @H.guard("node cpu/gpu")
@@ -329,7 +329,9 @@ def test_robustness():
                     "%s %dx%d: shape / finite" % (dev, size[0], size[1]))
         # An invalid expression must not crash the render (the node reports it and outputs black).
         for text in ("__import__('os')", "1 +", "", "a.q"):
-            img = render(dev, text)
+            img = render(dev, text, allow_errors=True)
+            H.check(len(H.LAST_ERRORS) == 1 and "ExprError" in H.LAST_ERRORS[0],
+                    "%s: invalid expression %r is reported as an error" % (dev, text))
             H.check(np.isfinite(img).all() and img.shape == (SIZE[1], SIZE[0], 4),
                     "%s: invalid expression %r renders without crashing" % (dev, text))
         # Division by zero / out-of-domain arguments follow the documented safe definitions.

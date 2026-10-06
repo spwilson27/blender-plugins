@@ -52,9 +52,6 @@ K_PASS, K_GROW, K_SHRINK, K_FEATHER, K_OUTLINE = range(5)
 # Per-pixel value + threshold. Body of the first GPU pass (output M).
 _BODY_VALUE = """
     vec4 c = in_Mask(texel);
-    if (mt_scalar != 0) {
-      c = vec4(c.r, c.r, c.r, 1.0);
-    }
     float v = c.r;
     if (mt_src == 1) {
       v = c.a;
@@ -299,23 +296,21 @@ class CompositorNodeLabMaskTools(LabNode, bpy.types.CompositorNode):
         p = self._params()
         w, h = int(dst.width), int(dst.height)
         mask = self.in_texture_or_value(inputs, "Mask", (1.0, 1.0, 1.0, 1.0))
-        scalar = lab_gpu.is_texture(mask) and mask.format in ("R16F", "R32F")
-        m_tex = distance.scratch(w, h, "mt_m", "R32F")
+        m_tex = lab_gpu.scratch(w, h, "mt_m", "R32F")
         lab_gpu.pointwise(
             _BODY_VALUE, {"M": m_tex}, inputs={"Mask": ("color", mask)},
             uniforms={
-                "mt_src": ("int", p["src"]), "mt_scalar": ("int", int(scalar)),
-                "mt_thr": ("int", int(p["thr"])), "mt_lo0": ("float", p["lo0"]),
+                "mt_src": ("int", p["src"]), "mt_thr": ("int", int(p["thr"])), "mt_lo0": ("float", p["lo0"]),
                 "mt_lo_inv": ("float", p["lo_inv"]), "mt_hi0": ("float", p["hi0"]),
                 "mt_hi_inv": ("float", p["hi_inv"]),
             }, libs=("exact",))
         kind = p["kind"]
         do_tex = di_tex = m_tex
         if kind in (K_GROW, K_FEATHER, K_OUTLINE):
-            do_tex = distance.scratch(w, h, "mt_do", "R32F")
+            do_tex = lab_gpu.scratch(w, h, "mt_do", "R32F")
             distance.gpu_edt_sq(m_tex, do_tex, p["radius"], polarity=1, threshold=0.5)
         if kind in (K_SHRINK, K_FEATHER, K_OUTLINE):
-            di_tex = distance.scratch(w, h, "mt_di", "R32F")
+            di_tex = lab_gpu.scratch(w, h, "mt_di", "R32F")
             distance.gpu_edt_sq(m_tex, di_tex, p["radius"], polarity=-1, threshold=0.5)
         lab_gpu.pointwise(
             _BODY_FINAL, {"Mask": dst},

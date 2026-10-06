@@ -211,8 +211,19 @@ def read_exr(path):
 _render_counter = [0]
 
 
-def render(scene):
-    """Render the scene's compositor output; returns (h, w, 4) float32, row 0 = bottom."""
+LAST_ERRORS = []     # lib errors (shader compile errors, node exceptions) of the last render
+
+
+def render(scene, allow_errors=False):
+    """Render the scene's compositor output; returns (h, w, 4) float32, row 0 = bottom.
+
+    Blender turns an exception in a node's evaluation (a shader that does not compile, a bug in
+    ``cpu`` / ``gpu``) into an info message on the node and default outputs, so the render itself
+    succeeds. The Lab library records those errors (``compositor_lab.lib.errors``); this reports
+    each one as a test failure unless ``allow_errors`` is set (then see ``LAST_ERRORS``)."""
+    from compositor_lab.lib import errors as lab_errors
+
+    lab_errors.clear()
     _render_counter[0] += 1
     path = os.path.join(TMP, "render_%d.exr" % _render_counter[0])
     scene.render.filepath = path
@@ -221,18 +232,24 @@ def render(scene):
         raise RuntimeError("render produced no file")
     arr = read_exr(path)
     os.remove(path)
+    LAST_ERRORS[:] = lab_errors.take()
+    if not allow_errors:
+        for err in LAST_ERRORS:
+            report(False, "node evaluation error: %s" % err.strip().splitlines()[0][:300])
+            print(err)
     return arr
 
 
 def render_node(node_idname, device="CPU", size=(64, 48), props=None, inputs=None,
-                images=None, out_socket=None, frame=None):
-    """Build Image -> node -> output and render it with the CPU or GPU compositor."""
+                images=None, out_socket=None, frame=None, allow_errors=False):
+    """Build Image -> node -> output and render it with the CPU or GPU compositor. Errors in the
+    node's evaluation (see ``render``) fail the test unless ``allow_errors``."""
     scene = configure_scene(size, device)
     if frame is not None:
         scene.frame_set(int(frame))
     build_tree(scene, node_idname, props, inputs, images, out_socket)
     try:
-        return render(scene)
+        return render(scene, allow_errors)
     finally:
         _clear_images()
 
@@ -338,13 +355,13 @@ def _find_subclasses(idname):
 
 
 def render_generator(idname, device="CPU", size=(64, 48), props=None, inputs=None,
-                     out_socket=None, frame=None):
+                     out_socket=None, frame=None, allow_errors=False):
     """Render a generator node (no required image inputs) at `size`."""
     real = generator_idname(idname)
     images = None
     if real != idname:
         images = {"Ref": np.zeros((size[1], size[0], 4), np.float32)}
-    return render_node(real, device, size, props, inputs, images, out_socket, frame)
+    return render_node(real, device, size, props, inputs, images, out_socket, frame, allow_errors)
 
 
 # ---------------------------------------------------------------------------

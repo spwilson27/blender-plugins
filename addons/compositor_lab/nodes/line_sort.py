@@ -28,7 +28,7 @@ import bpy
 import numpy as np
 from bpy.props import BoolProperty, EnumProperty, IntProperty
 
-from ..lib import distance, glsl, gpu as lab_gpu
+from ..lib import glsl, gpu as lab_gpu
 from ..lib.node import In, LabNode, Out
 
 MENU = "Utility"
@@ -192,8 +192,6 @@ _KEY_LOCAL = (64, 1, 1)
 
 
 def _build(kind, fmt):
-    import gpu
-
     scatter = kind == "scatter"
     info = lab_gpu.create_info((16, 16, 1) if scatter else _KEY_LOCAL)
     uimg = dict(qualifiers={'READ', 'WRITE'})
@@ -211,8 +209,7 @@ def _build(kind, fmt):
         info.push_constant('INT', name)
     body = {"keys": _GLSL_KEYS, "rank": _GLSL_RANK, "scatter": _GLSL_SCATTER}[kind]
     head = glsl.resolve("exact") + _GLSL_COMMON if kind == "keys" else ""
-    info.compute_source(head + body)
-    return gpu.shader.create_from_info(info)
+    return lab_gpu.compile_shader(info, head + body, "line_sort " + kind)
 
 
 def _shader(kind, fmt):
@@ -221,7 +218,7 @@ def _shader(kind, fmt):
 
 def _set_ints(shader, values):
     for name in _INT_UNIFORMS:
-        lab_gpu._set(shader.uniform_int, name, int(values.get(name, 0)))
+        lab_gpu.set_uniform(shader, name, "int", values.get(name, 0))
 
 
 # ---------------------------------------------------------------------------
@@ -335,7 +332,7 @@ class CompositorNodeLabLineSort(LabNode, bpy.types.CompositorNode):
             return
         src = self.in_texture_or_value(inputs, "Image", (0.5, 0.5, 0.5, 1.0))
         if not lab_gpu.is_texture(src):
-            vals = lab_gpu._as_floats(src, 4, fill_alpha=True)
+            vals = lab_gpu.as_floats(src, 4, fill_alpha=True)
             dst.clear(format='FLOAT', value=vals)
             return
         import gpu
@@ -343,8 +340,8 @@ class CompositorNodeLabLineSort(LabNode, bpy.types.CompositorNode):
         w, h = int(dst.width), int(dst.height)
         vertical = self.direction == 'COLUMNS'
         lines, length = (w, h) if vertical else (h, w)
-        keys = distance.scratch(lines, 1, "ls_keys", "RGBA32UI")
-        ranks = distance.scratch(lines, 1, "ls_ranks", "RGBA32UI")
+        keys = lab_gpu.scratch(lines, 1, "ls_keys", "RGBA32UI")
+        ranks = lab_gpu.scratch(lines, 1, "ls_ranks", "RGBA32UI")
         ints = dict(ls_lines=lines, ls_len=length, ls_vert=int(vertical),
                     ls_stat=_STAT_INDEX[self.statistic], ls_band=int(self.band_size),
                     ls_desc=int(self.descending), ls_w=w, ls_h=h, lab_zero=0)
