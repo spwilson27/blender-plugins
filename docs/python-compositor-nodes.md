@@ -253,6 +253,7 @@ parameters don't count. Methods with 3 parameters are called exactly as before.
 | `kind` | str | the evaluation kind, see below: `'RENDER'`, `'BACKDROP'`, `'VIEWPORT'` or `'SEQUENCER'` |
 | `is_animation_playing` | bool | true while the animation plays in the UI, see below |
 | `frame_start`, `frame_end` | int | the render frame range (`scene.frame_start` / `frame_end`) of the scene the compositor context evaluates |
+| `report(message, level='INFO')` | function | report a non-fatal message, see F5 |
 
 `kind` is derived in C++ from the `compositor::Context` subclass (`get_evaluation_kind()`):
 
@@ -268,6 +269,25 @@ so stateful nodes should include `kind` in their state key.
 
 The values are gathered in C++ (`EvalInfo` in `NOD_composite_python.hh`), so the method never has
 to read `bpy.context` off the main thread.
+
+### F5. Non-fatal messages: `context.report`
+
+A method that raises gets default outputs. To report a problem while still producing output, call
+`context.report(message, level='INFO')` with `level` `'INFO'` or `'WARNING'` (other levels raise
+`ValueError`). After the evaluation, C++ (`PythonNodeOperation::forward_messages`) forwards the
+messages:
+
+* as node warnings (Info / Warning) shown on the node in the node editor, through the compositor
+  `nodes_evaluation_log()` like the Warning node, when the context has a log (the node editor
+  backdrop and render; the viewport and sequencer have none);
+* as the info message of the compositor (`Context::set_info_message`, prefixed with the node name),
+  the most severe and latest message only; an exception still overrides it.
+
+At most 64 messages are kept per evaluation. `report` is bound to a capsule that owns a per
+evaluation collector; the collector is closed when the method returns, so calling a retained
+`report` afterwards raises `RuntimeError`. Warnings are not readable from Python, so
+`tests/framework/test_report.py` checks the API (CPU and GPU, output still produced, invalid
+arguments, use after the call).
 
 ### F3. Single value outputs
 

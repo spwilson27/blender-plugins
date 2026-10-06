@@ -38,7 +38,7 @@ run() {
   # shellcheck disable=SC2053
   [[ "$name" == $PATTERN ]] || return 0
   if with_timeout 600 "$BLENDER" "$@" > "$LOG_DIR/$name.log" 2>&1 &&
-     ! grep -q "internal state bug" "$LOG_DIR/$name.log"; then
+     ! grep -qE "internal state bug|Not freed memory blocks" "$LOG_DIR/$name.log"; then
     echo "PASS  $name"
   else
     echo "FAIL  $name (log: $LOG_DIR/$name.log)"
