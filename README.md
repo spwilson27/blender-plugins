@@ -31,7 +31,7 @@ Install it with *Preferences ▸ Add-ons ▸ Install from Disk*, choosing `addon
 
 ### Compositor Lab (`addons/compositor_lab/`)
 
-A package of 21 experimental nodes (Add ▸ Lab ▸ Filter / Generate / Utility), each with a numpy CPU
+A package of 22 experimental nodes (Add ▸ Lab ▸ Filter / Generate / Simulate / Utility), each with a numpy CPU
 path and a GPU compute path, built on a shared library (`lib/`: node base class, GPU kernel
 builder, GLSL snippets with numpy twins for hashing, noise, colour, blend modes, sampling,
 distance transforms and more). Needs the generator domain and evaluation context features of the
@@ -68,6 +68,12 @@ Node details (sockets, properties, algorithms, tolerances) are in the linked fil
 | Voronoi / Mosaic | Voronoi cells, distance fields, edges and stained-glass mosaic | [generators](docs/nodes/generators.md#voronoi--mosaic-compositornodelabvoronoi) |
 | Pattern | Anti-aliased stripes, checker, dots, hex grid, truchet, moire, rings | [generators](docs/nodes/generators.md#pattern-compositornodelabpattern) |
 | Flow Field | Line integral convolution and streamlines along a vector field | [generators](docs/nodes/generators.md#flow-field-compositornodelabflowfield) |
+
+**Simulate** (stateful, keep state between frames; see [lib README](addons/compositor_lab/lib/README.md#stateful-nodes))
+
+| Node | What it does | Details |
+|---|---|---|
+| Feedback / Trails | Mix the input with the previous output, zoomed, rotated, shifted, hue-shifted and faded; optional blend mode | [simulate](docs/nodes/simulate.md#feedback--trails-compositornodelabfeedback) |
 
 **Utility**
 

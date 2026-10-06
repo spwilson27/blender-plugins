@@ -10,6 +10,7 @@ logged and skipped).
 |---|---|
 | `lib/node.py` | `LabNode` base class, `In` / `Out` socket specs, `Ctx` |
 | `lib/gpu.py` | `kernel` / `pointwise` builder, shader cache, uniform binding, scratch textures |
+| `lib/state.py` | state streams for stateful nodes: frame cache, memory budget, Reset operator |
 | `lib/errors.py` | log of evaluation errors (read by the tests), `LabShaderError` |
 | `lib/glsl/*.py` | GLSL as Python strings: `hash`, `color`, `noise`, `blend`, `exact`, `pattern`, `field`, `dither`, `sampling`, `reduce`, `distance` |
 | `lib/np_*.py`, `lib/distance.py`, `lib/reduce.py`, `lib/expr.py` | numpy twins of the GLSL, and the CPU sides of the multi-pass helpers |
@@ -27,7 +28,7 @@ from bpy.props import FloatProperty
 from ..lib import gpu as lab_gpu
 from ..lib.node import In, LabNode, Out
 
-MENU = "Filter"            # "Filter", "Generate" or "Utility": the Add > Lab submenu
+MENU = "Filter"            # "Filter", "Generate", "Simulate" or "Utility": the Add > Lab submenu
 
 class CompositorNodeLabGain(LabNode, bpy.types.CompositorNode):
     '''Multiply the image by a gain'''                  # tooltip
@@ -84,6 +85,70 @@ NODE_CLASSES = [CompositorNodeLabGain]                  # required
 * A node with no image inputs is a *generator*: its outputs have the render size (F1).
 * Seeds / time: derive per-frame values from `ctx.time` / `ctx.frame` on the CPU **and** pass the
   same value to the GPU as a uniform, so both paths agree.
+
+## Stateful nodes
+
+Nodes that carry state between evaluations (feedback, simulations, history buffers). The compositor
+evaluates a copy of the tree from independent places (render, backdrop, viewport, sequencer, see
+`ctx.kind`) with frames in any order, so the state lives in `lib/state.py`, not on the node.
+`nodes/feedback.py` is the reference implementation.
+
+```python
+from ..lib.node import LabNode, StatefulNode
+
+class CompositorNodeLabThing(StatefulNode, LabNode, bpy.types.CompositorNode):   # mixin order matters
+    PROPS = [...]
+    def draw_buttons(self, context, layout):
+        self.draw_props(layout)
+        self.draw_state_buttons(layout)                 # the Reset button
+
+    def cpu(self, inputs, outputs, ctx):
+        plan = self.advance(ctx)                        # StateStream for this node + evaluation
+        state = plan.run(init=lambda: make_state(inputs), step=lambda s: step(s, inputs))
+        out[...] = state
+```
+
+* **Identity.** `StatefulNode` adds a hidden `lab_uid` (UUID, set in `init()`, regenerated in
+  `copy()`, which Blender calls only when the user duplicates the node). ID properties survive the
+  evaluation copies of the tree, so `lab_uid` keys the state; `self.state_key()` falls back to the node
+  name for nodes made before it existed. It also adds the `max_catch_up` and `cache_frames`
+  properties (drawn in the sidebar) used by `self.advance(ctx)`.
+* **Streams.** `self.state(ctx)` returns the `StateStream` for `(lab_uid, ctx.kind, ctx.size,
+  ctx.use_gpu)`; a new key (other size, device or evaluation kind) simply starts from reset. On
+  builds without F4 the kind is `'UNKNOWN'`, the scene start frame defaults to 1 (`ctx.kind`,
+  `ctx.is_animation_playing`, `ctx.frame_start`, `ctx.frame_end`).
+* **`advance(frame, start_frame, max_catch_up, cache_frames)`** returns a `Plan`
+  (`plan.kind`, `plan.state`, `plan.init`, `plan.steps`, `plan.message`). `plan.run(init, step)`
+  executes it and commits the result: `init()` builds the state from the inputs, `step(state)` returns
+  the next state; both return **new** payloads. Do not mutate `plan.state` or a committed payload.
+  Do custom flows with `plan.commit(state, pre)`.
+
+  | Situation | `plan.kind` | What `run` does |
+  |---|---|---|
+  | first evaluation, or frame <= scene start | `RESET` | `init()` |
+  | frame == last + 1 | `STEP` | one step |
+  | frame == last (re-render, parameter tweak) | `REPEAT` | one step from the state *before* the last step |
+  | frame in the frame cache | `RESTORE` | the cached state (a copy), no step |
+  | forward jump of k <= max_catch_up | `CATCH_UP` | k steps (all fed the requested frame's inputs) |
+  | backward to an uncached frame f, f - start <= max_catch_up | `RESIM` | `init()`, then f - start steps |
+  | any other jump | `HOLD` | the current state unchanged (`plan.message` says why; not cached); the stream moves to the requested frame, so sequential frames carry on |
+
+  Frames are rounded to integers. The input of the skipped frames is not available, so a catch-up of a
+  node that reads time-varying inputs is an approximation.
+* **State payloads** are numpy arrays (CPU), `gpu.types.GPUTexture` (GPU), or tuples / lists / dicts of
+  them. The frame cache stores copies (GPU: a copy kernel, `state.gpu_copy`). On the GPU allocate a
+  fresh texture per step (`gpu.types.GPUTexture(ctx.size, format=...)`) and write the result
+  to the node's output with a copy kernel; kernels may write several outputs at once.
+* **Memory.** Per stream: `cache_frames` (default 32) frames and 256 MB; over all streams 1 GB, by
+  least-recently-used eviction (cached frames first, then idle streams); streams unused for 30 minutes
+  expire. `state.configure(cache_frames=, stream_bytes=, global_bytes=, max_catch_up=, ttl=)` changes
+  the defaults. `load_pre` clears everything; the `compositor_lab.reset_state` operator clears one
+  node's streams by `uid` and tags the tree.
+* **Stateless fallback.** A node should offer a way to produce a meaningful still without history
+  (Feedback: *Pre-roll* iterations in `init()`; simulations: N iterations from the seed).
+* **Tests.** Render frame sequences with `scene.frame_set(f)` + `H.render(scene)`; look at
+  `state.streams_for(node.lab_uid)[0].last_kind` to assert which branch ran. See
+  `tests/lab/test_state.py` (semantics with fake payloads) and `tests/lab/test_feedback.py`.
 
 ## The GPU kernel builder
 

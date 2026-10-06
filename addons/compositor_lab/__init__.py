@@ -18,7 +18,7 @@ import traceback
 
 import bpy
 
-SECTIONS = ("Filter", "Generate", "Utility")
+SECTIONS = ("Filter", "Generate", "Simulate", "Utility")
 
 # Registered node classes by section, and per-module load errors (for diagnostics / tests).
 REGISTERED = {s: [] for s in SECTIONS}
@@ -49,7 +49,7 @@ def _discover():
 
 
 # ---------------------------------------------------------------------------
-# Add menu: Add > Lab > Filter / Generate / Utility
+# Add menu: Add > Lab > Filter / Generate / Simulate / Utility
 # ---------------------------------------------------------------------------
 
 def _make_menu_class():
@@ -145,6 +145,12 @@ def register():
                 ERRORS["%s.%s" % (name, cls.__name__)] = traceback.format_exc()
                 _log("failed to register %s:\n%s" % (cls.__name__, traceback.format_exc()))
     try:
+        from .lib import state as lab_state
+        lab_state.register()
+    except Exception:
+        ERRORS["lib.state"] = traceback.format_exc()
+        _log("state registration failed:\n" + traceback.format_exc())
+    try:
         _register_menu()
     except Exception:
         _log("menu registration failed:\n" + traceback.format_exc())
@@ -159,6 +165,11 @@ def unregister():
             except Exception:
                 _log("failed to unregister %s" % cls.__name__)
         section.clear()
+    try:
+        from .lib import state as lab_state
+        lab_state.unregister()
+    except Exception:
+        pass
     try:
         from .lib import gpu as lab_gpu
         lab_gpu.clear_cache()

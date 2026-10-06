@@ -31,9 +31,11 @@ linked to an image they fall back to ``default`` on both backends (identically, 
 agree). Per-pixel inputs use ``in_image_array`` (CPU) / ``in_texture_or_value`` (GPU).
 """
 
+import uuid
 from collections import namedtuple
 
 import numpy as np
+from bpy.props import IntProperty, StringProperty
 
 from . import errors as _errors
 
@@ -54,16 +56,24 @@ Out = namedtuple("Out", "name type single", defaults=(False,))
 class Ctx:
     """Normalised evaluation context. ``has_context`` is False on builds without F2."""
 
-    __slots__ = ("frame", "fps", "time", "size", "use_gpu", "has_context")
+    __slots__ = ("frame", "fps", "time", "size", "use_gpu", "has_context", "kind",
+                 "is_animation_playing", "frame_start", "frame_end")
 
     def __init__(self, frame=0.0, fps=24.0, time=0.0, size=(1, 1), use_gpu=False,
-                 has_context=False):
+                 has_context=False, kind="UNKNOWN", is_animation_playing=False,
+                 frame_start=1, frame_end=250):
         self.frame = float(frame)
         self.fps = float(fps)
         self.time = float(time)
         self.size = (int(size[0]), int(size[1]))
         self.use_gpu = bool(use_gpu)
         self.has_context = has_context
+        # F4 (builds without it: 'UNKNOWN', False, scene range 1..250 placeholders).
+        # kind: 'RENDER' | 'BACKDROP' | 'VIEWPORT' | 'SEQUENCER' | 'UNKNOWN'
+        self.kind = str(kind)
+        self.is_animation_playing = bool(is_animation_playing)
+        self.frame_start = int(frame_start)
+        self.frame_end = int(frame_end)
 
     @property
     def shape(self):
@@ -85,7 +95,11 @@ def make_ctx(context, size, use_gpu):
         time = frame / fps if fps else 0.0
     csize = getattr(context, "size", None)
     return Ctx(frame, fps, time, size if csize is None else csize,
-               getattr(context, "use_gpu", use_gpu), True)
+               getattr(context, "use_gpu", use_gpu), True,
+               getattr(context, "kind", "UNKNOWN"),
+               getattr(context, "is_animation_playing", False),
+               getattr(context, "frame_start", 1),
+               getattr(context, "frame_end", 250))
 
 
 def is_single(value):
@@ -293,3 +307,60 @@ class LabNode:
         """GPU: a GPUTexture for a linked input, else the single value (float / tuple)."""
         v = inputs.get(name)
         return default if v is None else v
+
+
+class StatefulNode:
+    """Mixin for nodes that carry state from one evaluation to the next (see ``lib/state.py``).
+
+    Put it before ``LabNode``: ``class CompositorNodeLabX(StatefulNode, LabNode,
+    bpy.types.CompositorNode)``. It adds
+
+    * a hidden ``lab_uid`` StringProperty (a UUID) set in ``init()`` and regenerated in
+      ``copy()``. Evaluation runs on copies of the node tree, but ID properties survive those
+      copies, so ``lab_uid`` is the stable key of the node's state. ``copy()`` is only called
+      for user duplication (verified by ``tests/lab/test_feedback.py``).
+    * ``max_catch_up`` and ``cache_frames`` properties (sidebar) used by ``state()``.
+    * ``self.state(ctx)`` -> ``StateStream``; ``draw_state_buttons(layout)`` draws Reset.
+    """
+
+    lab_uid: StringProperty(name="Lab UID", default="", options={'HIDDEN'})
+    max_catch_up: IntProperty(
+        name="Max Catch-up", default=64, min=0, soft_max=1000,
+        description="Frames the simulation may step in one evaluation after a jump forward "
+                    "(or when re-simulating after jumping back); beyond that it holds")
+    cache_frames: IntProperty(
+        name="Cached Frames", default=32, min=0, soft_max=256,
+        description="Frames of state kept for scrubbing back (0 disables the frame cache)")
+
+    def init(self, context):
+        super().init(context)
+        self.lab_uid = uuid.uuid4().hex
+
+    def copy(self, node):
+        # Called when the user duplicates the node (never for evaluation copies).
+        self.lab_uid = uuid.uuid4().hex
+
+    def state_key(self):
+        """Stable identity: ``lab_uid``; nodes made before it existed fall back to the name."""
+        return self.lab_uid or ("name:" + self.name)
+
+    def state(self, ctx):
+        """The ``StateStream`` of this node for the evaluation described by ``ctx``."""
+        from . import state as lab_state
+
+        return lab_state.get_stream(self.state_key(), ctx.kind, ctx.size, ctx.use_gpu)
+
+    def advance(self, ctx):
+        """``self.state(ctx).advance(...)`` with this node's start frame and properties."""
+        return self.state(ctx).advance(ctx.frame, ctx.frame_start, self.max_catch_up,
+                                       self.cache_frames)
+
+    def draw_state_buttons(self, layout):
+        op = layout.operator("compositor_lab.reset_state", text="Reset", icon='FILE_REFRESH')
+        op.uid = self.state_key()
+
+    def draw_buttons_ext(self, context, layout):
+        self.draw_props(layout)
+        layout.prop(self, "max_catch_up")
+        layout.prop(self, "cache_frames")
+        self.draw_state_buttons(layout)
