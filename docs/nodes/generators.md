@@ -26,6 +26,11 @@ F2 - F1 in Edges); Border (coverage 0..1).
 * Tolerances: CPU vs GPU max abs difference ~1e-6 (tests use 1e-5, <= 0.02% of pixels flipping).
   CPU 1080p: ~0.3 s.
 
+**Ranges** (soft range | clamp):
+
+* Scale 0..100 (internally >= 0.001), Jitter 0..1 (internally clamped), Border Width 0..1
+  (internally >= 0), Offset X/Y -10..10, Phase -10..10, Speed -10..10, Seed 0..1000. No lib clamps.
+
 ## Pattern (`CompositorNodeLabPattern`)
 
 Inputs: Scale (periods across the larger side, 10), Rotation (degrees, about the image centre),
@@ -42,6 +47,11 @@ Arcs, Truchet Diagonals, Moire, Rings). Outputs: Color = mix(A, B, Mask); Mask (
 * Tolerances: CPU vs GPU max abs ~6e-6 (9.8e-5 with Offset -123: float32 spacing). Versus a 6x6
   supersampled float64 binary reference the mean absolute difference is <= 0.015 (max 0.27 at
   corners/thin features).
+
+**Ranges** (soft range | clamp):
+
+* Scale 0..200 (internally >= 0.001), Rotation -180..180 (degrees), Offset X/Y -10..10, Duty 0..1
+  and Softness 0..1 (internally clamped), Moire Angle -180..180 (degrees), Seed 0..1000. No lib clamps.
 
 ## Flow Field (`CompositorNodeLabFlowField`)
 
@@ -69,9 +79,23 @@ Value), Kernel (Box, Triangle). Outputs: Color (LIC), Streaks (grey), Field (RG 
   mean abs diff <= 1.3e-4, <= 1.8% of pixels over 5e-4, max 0.02 colour (0.25 for the high-contrast
   Streaks of a random-noise gradient image). Tests assert exactly that.
 
+**Ranges** (soft range | clamp):
+
+* Length 0..256 (internally clamped to the same), Step -10..10, Scale 0..50, Rotate -180..180
+  (degrees), Phase -10..10, Speed -10..10, Density 0..1 (internally clamped), Seed 0..1000. No lib
+  clamps.
+
 ## Notes
 
 * GLSL gotchas found (Blender's MSL translation rejects forward declarations of functions and the
   identifier `kernel`, even in comments) are collected in `addons/compositor_lab/lib/README.md`.
   Lib code that needs an input may call `in_<Name>`: `gpu.kernel` declares the accessors before the
   libs.
+
+## Noise ranges
+
+Socket / property | soft range | clamp
+
+* Scale: 0..50, none; Octaves: 1..16, clamped to 1..16; Lacunarity: 1..4, none; Gain: 0..1, none
+* Warp: 0..4, none; Randomness: 0..1, clamped to 0..1
+* Offset X / Y: -100..100, none; Phase: -10..10, none; Speed: -5..5, none; Seed: 0..1000, none

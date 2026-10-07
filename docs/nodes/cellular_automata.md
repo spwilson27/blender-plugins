@@ -74,3 +74,15 @@ re-render, rule tweak, scrub back, catch-up, hold, start frame, Reset, duplicate
 caps); CPU vs GPU on Cells / Age exactly and Color within 1e-5. Seed / Inject luminance is computed in
 float32 on the CPU and as a GLSL `dot` on the GPU, so an image exactly on the threshold could differ
 by one ulp (the tests use values clear of it).
+
+## Ranges
+
+Socket / property | soft range | clamp
+
+* Inject: 0..1, none (luminance > 0.5 paints)
+* Threshold: 0..1, none
+* Density: 0..1, clamped to 0..1
+* Random Seed: 0..1000, none
+* Generations per Frame: 0..16, clamped to 0..1024
+* Cell Size: 1..32, clamped to 1..256
+* Pre-roll: hard 0..4096, soft max 256; Age Range: hard 1..65535, soft max 1000

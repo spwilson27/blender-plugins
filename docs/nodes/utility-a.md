@@ -35,6 +35,8 @@ SSA temporaries (GPU). Nothing is passed to `eval` / `exec`.
 Tolerances (tests): CPU node vs float64 reference 2e-5; GPU vs CPU 2e-4 (GPU trig/exp/pow are
 approximate), `noise()` 6e-4.
 
+Ranges: no numeric sockets (colour inputs only); no numeric properties.
+
 ## Image Statistics (`CompositorNodeLabImageStatistics`)
 
 Input: `Image`. Single-value (F3) outputs: `Min`, `Max`, `Mean` (colours, per channel, alpha 1),
@@ -48,6 +50,8 @@ atomics: a tile pass (one thread per 16x16 tile, 5 scratch textures) and merge p
 (mean/variance combined with Chan's formula), then one small readback; the histogram uses one
 thread per tile with a private histogram and a per-bin sum pass. An unlinked input is a 1x1 image.
 Tolerances: Min/Max exact; means 3e-6 relative (observed 5e-7); CPU vs numpy 2e-7.
+
+Ranges: no numeric sockets; Percentile 0..100 (hard).
 
 ## Auto Levels (`CompositorNodeLabAutoLevels`)
 
@@ -64,6 +68,8 @@ parameters are computed on the host from the reductions (CPU: numpy, GPU: comput
 per-pixel apply is a numpy / GLSL pointwise kernel. Tolerances: CPU vs independent numpy 2.3e-7
 observed (test 1e-5); GPU vs CPU 3.6e-7 observed (test 2e-6). Output percentiles land on 0/1
 within 0.02 (one bin of the stretched range).
+
+Ranges (soft | clamp): Fac 0..1 | none; properties Low / High 0..100 and Target 0.01..0.99 (hard).
 
 ## Palette Extract (`CompositorNodeLabPaletteExtract`)
 
@@ -84,3 +90,5 @@ default / Linear RGB), `seed`.
    Both are pointwise GPU kernels / numpy; the palette reaches the shader in a 8x2 RGBA32F texture.
 
 Observed CPU vs GPU: palette, Swatch and Quantized are bit-identical in the tests.
+
+Ranges: no numeric sockets; Colors 1..8 (hard); Seed soft 0..1000, no clamp.

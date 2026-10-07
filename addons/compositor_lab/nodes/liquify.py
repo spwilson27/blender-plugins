@@ -77,11 +77,11 @@ class CompositorNodeLabLiquify(LabNode, bpy.types.CompositorNode):
 
     SOCKETS = [
         In("Image", "COLOR", (0.5, 0.5, 0.5, 1.0)),
-        In("Center X", "FLOAT", 0.5),
-        In("Center Y", "FLOAT", 0.5),
-        In("Radius", "FLOAT", 0.4),
-        In("Strength", "FLOAT", 2.0),
-        In("Falloff", "FACTOR", 1.0),
+        In("Center X", "FLOAT", 0.5, min=0.0, max=1.0),
+        In("Center Y", "FLOAT", 0.5, min=0.0, max=1.0),
+        In("Radius", "FLOAT", 0.4, min=0.0, max=2.0, clamp=(0.0, None)),
+        In("Strength", "FLOAT", 2.0, min=-4.0, max=4.0),
+        In("Falloff", "FACTOR", 1.0, clamp=True),
         Out("Image", "COLOR"),
     ]
     PROPS = ["mode", "aspect_correct", "interpolation"]

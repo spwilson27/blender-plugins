@@ -49,17 +49,17 @@ class CompositorNodeLabNoise(LabNode, bpy.types.CompositorNode):
     bl_label = "Noise"
 
     SOCKETS = [
-        In("Scale", "FLOAT", 5.0),
-        In("Octaves", "INT", 4),
-        In("Lacunarity", "FLOAT", 2.0),
-        In("Gain", "FLOAT", 0.5),
-        In("Warp", "FLOAT", 0.0),
-        In("Randomness", "FACTOR", 1.0),
-        In("Offset X", "FLOAT", 0.0),
-        In("Offset Y", "FLOAT", 0.0),
-        In("Phase", "FLOAT", 0.0),
-        In("Speed", "FLOAT", 0.5),
-        In("Seed", "INT", 0),
+        In("Scale", "FLOAT", 5.0, min=0.0, max=50.0),
+        In("Octaves", "INT", 4, min=1, max=16, clamp=(1, 16)),
+        In("Lacunarity", "FLOAT", 2.0, min=1.0, max=4.0),
+        In("Gain", "FLOAT", 0.5, min=0.0, max=1.0),
+        In("Warp", "FLOAT", 0.0, min=0.0, max=4.0),
+        In("Randomness", "FACTOR", 1.0, clamp=True),
+        In("Offset X", "FLOAT", 0.0, min=-100.0, max=100.0),
+        In("Offset Y", "FLOAT", 0.0, min=-100.0, max=100.0),
+        In("Phase", "FLOAT", 0.0, min=-10.0, max=10.0),
+        In("Speed", "FLOAT", 0.5, min=-5.0, max=5.0),
+        In("Seed", "INT", 0, min=0, max=1000),
         Out("Value", "FLOAT"),
         Out("Color", "COLOR"),
     ]

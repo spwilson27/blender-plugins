@@ -101,12 +101,12 @@ class CompositorNodeLabCellularAutomata(StatefulNode, LabNode, bpy.types.Composi
 
     SOCKETS = [
         In("Seed", "COLOR", (0.0, 0.0, 0.0, 1.0)),
-        In("Inject", "FLOAT", 0.0),
+        In("Inject", "FLOAT", 0.0, min=0.0, max=1.0),
         In("Threshold", "FACTOR", 0.5),
-        In("Density", "FACTOR", 0.35),
-        In("Random Seed", "INT", 0),
-        In("Generations per Frame", "INT", 1),
-        In("Cell Size", "INT", 2),
+        In("Density", "FACTOR", 0.35, clamp=True),
+        In("Random Seed", "INT", 0, min=0, max=1000),
+        In("Generations per Frame", "INT", 1, min=0, max=16, clamp=(0, 1024)),
+        In("Cell Size", "INT", 2, min=1, max=32, clamp=(1, 256)),
         Out("Cells", "FLOAT"),
         Out("Age", "FLOAT"),
         Out("Color", "COLOR"),
@@ -122,11 +122,11 @@ class CompositorNodeLabCellularAutomata(StatefulNode, LabNode, bpy.types.Composi
     neighbourhood: EnumProperty(name="Neighbourhood", items=_NEIGHBOURHOOD, default='MOORE')
     edges: EnumProperty(name="Edges", items=_EDGES, default='WRAP')
     preroll: IntProperty(
-        name="Pre-roll", default=0, min=0, max=4096,
+        name="Pre-roll", default=0, min=0, soft_max=256, max=4096,
         description="Generations run on the seed when the state is (re)started, so a still "
                     "render shows an evolved pattern (0: the first frame is the seed)")
     age_range: IntProperty(
-        name="Age Range", default=20, min=1, max=65535,
+        name="Age Range", default=20, min=1, soft_max=1000, max=65535,
         description="Age (generations since birth) that maps to the end of the Age output and "
                     "of the colour gradient")
     color_a: FloatVectorProperty(name="Color A", subtype='COLOR', size=3, min=0.0, soft_max=1.0,

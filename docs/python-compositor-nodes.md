@@ -315,6 +315,27 @@ class MyStats(bpy.types.CompositorNode):
 - A node with only single value outputs and no image inputs is a valid use of F1 (the domain is
   not used by those outputs).
 
+## Socket ranges
+
+Numeric input sockets of a Python node (`NodeSocketFloat*` and `NodeSocketInt*`, every subtype)
+have `min_value` and `max_value`, the same names as on node tree interface sockets. They are the
+slider (soft) range: dragging a slider stays inside, typing or linking can go outside, and
+`default_value` itself is never clamped.
+
+```python
+sock = node.inputs.new('NodeSocketFloat', "Radius")
+sock.min_value, sock.max_value = 0.0, 100.0
+```
+
+* Stored with the socket in the .blend (the same `bNodeSocketValueFloat/Int` fields that built-in
+  nodes fill from their declarations), so saved files keep their ranges.
+* New sockets are unbounded (`-FLT_MAX..FLT_MAX`, `INT_MIN..INT_MAX`), exactly as before; built-in
+  nodes are unaffected because their declarations set the range after creation.
+* Setting a bound past the other moves the other along, so `min_value <= max_value` always holds.
+* Setting a range only redraws; it does not re-evaluate the tree.
+* Not available on builds without this change: guard with `hasattr(sock, "min_value")`.
+* Vector, colour and other socket types are unchanged.
+
 ## Threading / GIL notes
 
 - Blender releases the GIL after startup (`bpy_interface.cc:~648`), so

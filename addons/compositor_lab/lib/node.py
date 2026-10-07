@@ -49,7 +49,12 @@ SOCKET_TYPES = {
     "BOOL": "NodeSocketBool",
 }
 
-In = namedtuple("In", "name type default hide_value", defaults=(None, False))
+# ``min`` / ``max``: the slider (soft) range of FLOAT / FACTOR / INT inputs. ``clamp``: a hard
+# clamp applied to the *single value* by the ``in_*`` helpers on both backends. ``True`` clamps to
+# ``min`` / ``max`` (a missing side stays open), ``(lo, hi)`` clamps to that range (and is the soft
+# range unless ``min`` / ``max`` are given). FACTOR inputs default to the range 0..1.
+In = namedtuple("In", "name type default hide_value min max clamp",
+                defaults=(None, False, None, None, None))
 Out = namedtuple("Out", "name type single", defaults=(False,))
 
 
@@ -110,6 +115,67 @@ def make_ctx(context, size, use_gpu):
                getattr(context, "report", None))
 
 
+def resolve_range(spec):
+    """(soft_lo, soft_hi, clamp_lo, clamp_hi) of an ``In`` spec; ``None`` for an open side. The
+    clamp pair is ``(None, None)`` when the input has no hard clamp."""
+    lo, hi = spec.min, spec.max
+    if spec.type == "FACTOR":
+        lo = 0.0 if lo is None else lo
+        hi = 1.0 if hi is None else hi
+    c = spec.clamp
+    if not c:
+        return lo, hi, None, None
+    if c is True:
+        clo, chi = lo, hi
+    else:
+        clo, chi = c
+        lo = clo if lo is None else lo
+        hi = chi if hi is None else hi
+    return lo, hi, clo, chi
+
+
+_CLAMPS = {}     # LabNode subclass -> {socket name: (is_int, lo, hi)}
+
+
+def _clamp_table(cls):
+    table = _CLAMPS.get(cls)
+    if table is None:
+        table = {}
+        for s in cls.SOCKETS:
+            if isinstance(s, In) and s.type in ("FLOAT", "FACTOR", "INT"):
+                _, _, clo, chi = resolve_range(s)
+                if clo is not None or chi is not None:
+                    table[s.name] = (s.type == "INT", clo, chi)
+        _CLAMPS[cls] = table
+    return table
+
+
+def _clamp_value(entry, v):
+    is_int, lo, hi = entry
+    if lo is not None and v < lo:
+        v = lo
+    if hi is not None and v > hi:
+        v = hi
+    return int(v) if is_int else float(v)
+
+
+def apply_ranges(node):
+    """Set the slider range of a Lab node's FLOAT / FACTOR / INT sockets from its ``SOCKETS``
+    spec. A no-op on Blender builds whose sockets have no ``min_value`` / ``max_value``."""
+    for spec in node.SOCKETS:
+        if not isinstance(spec, In) or spec.type not in ("FLOAT", "FACTOR", "INT"):
+            continue
+        sock = node.inputs.get(spec.name)
+        if sock is None or not hasattr(sock, "min_value"):
+            continue
+        lo, hi, _, _ = resolve_range(spec)
+        cast = int if spec.type == "INT" else float
+        if lo is not None:
+            sock.min_value = cast(lo)
+        if hi is not None:
+            sock.max_value = cast(hi)
+
+
 def is_single(value):
     return value is None or isinstance(value, (int, float, bool, tuple, list))
 
@@ -163,6 +229,7 @@ class LabNode:
                     sock.hide_value = True
             else:
                 self.outputs.new(SOCKET_TYPES[spec.type], spec.name)
+        apply_ranges(self)
 
     def draw_buttons(self, context, layout):
         self.draw_props(layout)
@@ -247,22 +314,36 @@ class LabNode:
         return outputs.get(name)
 
     # -- inputs ----------------------------------------------------------
-    @staticmethod
-    def in_float(inputs, name, default=0.0):
-        """Scalar float; ``default`` if the socket is missing or linked to an image."""
+    @classmethod
+    def in_float(cls, inputs, name, default=0.0):
+        """Scalar float; ``default`` if the socket is missing or linked to an image. Inputs
+        declared with ``clamp=`` are clamped (the default too), identically on both backends."""
         v = inputs.get(name)
         if isinstance(v, (int, float, bool)):
-            return float(v)
-        if isinstance(v, (tuple, list)) and v:
-            return float(v[0])
-        return float(default)
+            v = float(v)
+        elif isinstance(v, (tuple, list)) and v:
+            v = float(v[0])
+        else:
+            v = float(default)
+        entry = _clamp_table(cls).get(name)
+        return v if entry is None else float(_clamp_value(entry, v))
 
     @classmethod
     def in_int(cls, inputs, name, default=0):
+        """Scalar int (see ``in_float`` for ``clamp=``)."""
         v = inputs.get(name)
-        if isinstance(v, (int, float, bool)):
-            return int(v)
-        return int(default)
+        v = int(v) if isinstance(v, (int, float, bool)) else int(default)
+        entry = _clamp_table(cls).get(name)
+        return v if entry is None else int(_clamp_value(entry, v))
+
+    @classmethod
+    def _clamp_single(cls, name, v):
+        """Clamp a single scalar value of an input declared with ``clamp=``. Images and
+        tuples (colours, vectors) pass through unchanged."""
+        entry = _clamp_table(cls).get(name)
+        if entry is not None and isinstance(v, (int, float)) and not isinstance(v, bool):
+            return _clamp_value(entry, v)
+        return v
 
     @staticmethod
     def in_color(inputs, name, default=(0.0, 0.0, 0.0, 1.0)):
@@ -272,17 +353,19 @@ class LabNode:
             return tuple(_to_floats(v, 4, default))
         return tuple(default)
 
-    @staticmethod
-    def in_image_array(inputs, name, shape, channels=4, default=None):
+    @classmethod
+    def in_image_array(cls, inputs, name, shape, channels=4, default=None):
         """Input as a (H, W, channels) float32 array (read-only: may be a broadcast view).
 
         Single values are broadcast; images with a different size are clamp-resampled; channel
         counts are adapted (grey -> RGB, RGB -> RGBA with alpha 1, RGBA -> RGB drops alpha).
-        ``default`` is used when the socket is missing."""
+        ``default`` is used when the socket is missing. ``clamp=`` applies to a scalar single
+        value only; the pixels of a linked image are never clamped."""
         h, w = int(shape[0]), int(shape[1])
         v = inputs.get(name)
         if v is None:
             v = default if default is not None else 0.0
+        v = cls._clamp_single(name, v)
         if is_single(v):
             vals = np.asarray(_to_floats(v, channels, None), dtype=np.float32)
             return np.broadcast_to(vals, (h, w, channels))
@@ -319,11 +402,12 @@ class LabNode:
         on a copy of the tree on other threads, and a linked constant should act as a scalar.)"""
         return not is_single(inputs.get(name))
 
-    @staticmethod
-    def in_texture_or_value(inputs, name, default=0.0):
-        """GPU: a GPUTexture for a linked input, else the single value (float / tuple)."""
+    @classmethod
+    def in_texture_or_value(cls, inputs, name, default=0.0):
+        """GPU: a GPUTexture for a linked input, else the single value (float / tuple). As for
+        ``in_image_array``, ``clamp=`` applies to a scalar value, never to the texture."""
         v = inputs.get(name)
-        return default if v is None else v
+        return default if v is None else cls._clamp_single(name, v)
 
 
 class StatefulNode:

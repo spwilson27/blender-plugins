@@ -96,12 +96,12 @@ class CompositorNodeLabGlitch(LabNode, bpy.types.CompositorNode):
     SOCKETS = [
         In("Fac", "FACTOR", 1.0),
         In("Image", "COLOR", (0.5, 0.5, 0.5, 1.0)),
-        In("Seed", "INT", 0),
-        In("Speed", "FLOAT", 8.0),
-        In("Split", "FLOAT", 6.0),
-        In("Shift", "FLOAT", 48.0),
+        In("Seed", "INT", 0, min=0, max=1000),
+        In("Speed", "FLOAT", 8.0, min=-60.0, max=60.0),
+        In("Split", "FLOAT", 6.0, min=-100.0, max=100.0),
+        In("Shift", "FLOAT", 48.0, min=0.0, max=500.0),
         In("Density", "FACTOR", 0.2),
-        In("Jitter", "FLOAT", 6.0),
+        In("Jitter", "FLOAT", 6.0, min=0.0, max=100.0),
         Out("Color", "COLOR"),
     ]
     PROPS = ["use_split", "split_angle", "split_flicker", None, "use_blocks", "block_width",
@@ -109,13 +109,14 @@ class CompositorNodeLabGlitch(LabNode, bpy.types.CompositorNode):
              "crush_bits"]
 
     use_split: BoolProperty(name="RGB Split", default=True)
-    split_angle: FloatProperty(name="Angle", default=0.0, subtype='ANGLE')
+    split_angle: FloatProperty(name="Angle", default=0.0, soft_min=-math.pi, soft_max=math.pi,
+                               subtype='ANGLE')
     split_flicker: FloatProperty(name="Flicker", description="Random variation of the split "
                                  "length from one glitch step to the next", default=0.5,
                                  min=0.0, max=1.0, subtype='FACTOR')
     use_blocks: BoolProperty(name="Block Displacement", default=True)
-    block_width: IntProperty(name="Block Width", default=96, min=1, max=4096, subtype='PIXEL')
-    block_height: IntProperty(name="Block Height", default=24, min=1, max=4096, subtype='PIXEL')
+    block_width: IntProperty(name="Block Width", default=96, min=1, max=4096, soft_max=512, subtype='PIXEL')
+    block_height: IntProperty(name="Block Height", default=24, min=1, max=4096, soft_max=512, subtype='PIXEL')
     use_jitter: BoolProperty(name="Scanline Jitter", default=True)
     jitter_density: FloatProperty(name="Row Density", description="Fraction of rows that move",
                                   default=0.25, min=0.0, max=1.0, subtype='FACTOR')

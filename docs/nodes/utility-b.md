@@ -21,6 +21,8 @@ Makes an image tile without a visible seam. Output has the input's size.
 - CPU / GPU: float32 maths; GPU differs by fma contraction only (observed max 1.8e-7, test tolerance 2e-6).
   Mirror is exact.
 
+Ranges: no numeric sockets; Blend Width 0.01..1 (hard).
+
 ## Mask Tools
 
 Threshold, grow / shrink, feather, outline and invert, with exact Euclidean distances.
@@ -47,6 +49,8 @@ Threshold, grow / shrink, feather, outline and invert, with exact Euclidean dist
   every mode, odd sizes down to 4x4). Soft threshold / feather agree to 2e-5 (sqrt, smoothstep rounding;
   observed far smaller). Luminance uses the rounded-product trick from `glsl/exact.py` so thresholds agree.
 
+Ranges: no numeric sockets; Low / High soft 0..1 (no hard limit), Softness 0..inf (soft max 1), Grow -1024..1024 (soft -64..64), Feather 0..2048, Width 0..1024 (hard).
+
 ## Pixel Shuffle
 
 Seeded scrambling; the output is always a permutation of the input pixels.
@@ -65,6 +69,8 @@ Seeded scrambling; the output is always a permutation of the input pixels.
   shared PCG hash, seeds via `lab_hash3`) with cycle walking, computed per pixel (no tables). The GLSL is
   node-local (registered as `lib/glsl/pixel_shuffle` in `sys.modules`, see "lib gaps" in the report).
   CPU and GPU run the same integer maths: bit-identical.
+
+Ranges: no numeric sockets; Block Size / Radius 1..512 (soft max 64), Iterations 1..8, Amount 0..1, Rate 0..inf (soft max 60) (hard); Seed soft 0..1000, no clamp.
 
 ## Line Sort
 
@@ -85,3 +91,5 @@ Reorders whole rows or columns by a per-line statistic.
   sort, O(K) per line, exactly the stable order; used instead of a bitonic network since it needs no
   inter-thread synchronisation); every pixel is scattered to its line's rank. Output is bit-identical to
   the CPU (`np.lexsort`), tested for all statistics, both axes, bands, ties and odd sizes.
+
+Ranges: no numeric sockets; Band Size 0..inf (soft max 256), 0 = whole line.

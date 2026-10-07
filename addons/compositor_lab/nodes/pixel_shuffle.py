@@ -368,7 +368,7 @@ class CompositorNodeLabPixelShuffle(LabNode, bpy.types.CompositorNode):
                             description="Number of swap passes (each with new block offsets)")
     amount: FloatProperty(name="Amount", default=1.0, min=0.0, max=1.0, subtype='FACTOR',
                           description="Fraction of pixels / pairs / blocks affected")
-    seed: IntProperty(name="Seed", default=0)
+    seed: IntProperty(name="Seed", default=0, soft_min=0, soft_max=1000)
     animate: BoolProperty(name="Animate", default=False,
                           description="Change the seed over time")
     rate: FloatProperty(name="Rate", default=12.0, min=0.0, soft_max=60.0,

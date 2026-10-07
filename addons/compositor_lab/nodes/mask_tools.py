@@ -156,8 +156,8 @@ class CompositorNodeLabMaskTools(LabNode, bpy.types.CompositorNode):
     ])
     use_threshold: BoolProperty(name="Threshold", default=True,
                                 description="Keep values between Low and High")
-    low: FloatProperty(name="Low", default=0.5, description="Lower threshold")
-    high: FloatProperty(name="High", default=1.0, description="Upper threshold")
+    low: FloatProperty(name="Low", default=0.5, soft_min=0.0, soft_max=1.0, description="Lower threshold")
+    high: FloatProperty(name="High", default=1.0, soft_min=0.0, soft_max=1.0, description="Upper threshold")
     softness: FloatProperty(name="Softness", default=0.0, min=0.0, soft_max=1.0,
                             description="Width of the smooth transition at each threshold edge")
     grow: FloatProperty(name="Grow", default=0.0, min=-MAX_RADIUS, max=MAX_RADIUS, soft_min=-64,

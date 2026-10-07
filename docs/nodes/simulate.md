@@ -33,3 +33,15 @@ out_n = blend(input_n, T(out_{n-1}) * Decay, Amount)      Blend = Mix: input + (
   requested frame feeds every step) up to Max Catch-up, then hold the last state.
 * Tolerances: CPU vs GPU about 1e-6 per step; the tests allow 2e-4 over the first 5 frames with
   zoom, rotation, hue and blend modes.
+
+### Ranges (Feedback / Trails)
+
+Socket / property | soft range | clamp
+
+* Amount: 0..1, clamped to 0..1
+* Decay: 0..1, none
+* Zoom: 0.1..4, clamped to >= 0.001
+* Rotation: -180..180 degrees, none
+* Offset X / Y: -500..500 pixels, none
+* Hue Shift: -180..180 degrees, none
+* Pre-roll (property): hard 0..256, soft max 64

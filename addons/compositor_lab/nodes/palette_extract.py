@@ -190,7 +190,8 @@ class CompositorNodeLabPaletteExtract(LabNode, bpy.types.CompositorNode):
         name="Space", default='OKLAB',
         items=[('OKLAB', "OKLab", "Cluster in perceptual OKLab space"),
                ('LINEAR', "Linear RGB", "Cluster in scene-linear RGB")])
-    seed: IntProperty(name="Seed", default=0, description="Seed of the k-means++ initialisation")
+    seed: IntProperty(name="Seed", default=0, soft_min=0, soft_max=1000,
+                    description="Seed of the k-means++ initialisation")
 
     def _write_colors(self, outputs, palette):
         for i, name in enumerate(_COLOR_NAMES):

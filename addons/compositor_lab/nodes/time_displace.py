@@ -119,8 +119,8 @@ class CompositorNodeLabTimeDisplace(StatefulNode, LabNode, bpy.types.CompositorN
     SOCKETS = [
         In("Image", "COLOR", (0.0, 0.0, 0.0, 1.0)),
         In("Map", "COLOR", (0.5, 0.5, 0.5, 1.0)),
-        In("History Frames", "INT", 30),
-        In("Amount", "FACTOR", 1.0),
+        In("History Frames", "INT", 30, min=0, max=MAX_FRAMES, clamp=(0, MAX_FRAMES)),
+        In("Amount", "FACTOR", 1.0, clamp=True),
         In("Center X", "FACTOR", 0.5),
         In("Center Y", "FACTOR", 0.5),
         Out("Image", "COLOR"),

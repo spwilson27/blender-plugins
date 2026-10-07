@@ -89,3 +89,12 @@ Performance at 1080p (Half Float, 30 frames, Blend Frames; including a ~48-56 ms
 readback that a pass-through also pays): about +14 ms per frame on the CPU for slit-scan rows,
 +52 ms for a Displacement Map at 1/2 (four taps per frame), +42 ms radial at Full Float; on the GPU
 about +1 to +20 ms. The first frame also allocates the ring.
+
+## Ranges
+
+Socket / property | soft range | clamp
+
+* History Frames: 0..120, clamped to 0..120
+* Amount: 0..1, clamped to 0..1
+* Center X / Y: 0..1, none (a centre outside the image is valid)
+* Memory Cap (MB): hard min 1, soft max 8192

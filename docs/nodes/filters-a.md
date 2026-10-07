@@ -31,6 +31,11 @@ CPU vs GPU: max difference 3e-8 (1e-5 tolerance); 6e-6 in lightness mode (5e-5 t
 0.05 % of pixels may differ by a quantiser step if a value sits within rounding of a step edge
 (observed: none).
 
+**Ranges** (soft range | clamp):
+
+* Fac 0..1 | none. Levels 2..256 | 2..65536. Per-channel levels 2..256 (hard 2..65536). Gamma 0.1..5 (hard).
+  Dither Amount 0..1 (hard). Seed 0..1000 (hard min 0).
+
 ## Gradient Map (`CompositorNodeLabGradientMap`)
 
 Inputs: `Fac`, `Image`. Properties: Preset (Inferno, Viridis, Sunset, Ocean, Fire, Ice and Fire,
@@ -47,6 +52,10 @@ follows L cubed. Preserve Alpha off gives an opaque result. Coincident stops are
 
 CPU vs GPU: max difference 1.5e-6 (tolerance 1e-5); constant-interpolation edges may flip for
 <= 0.2 % of pixels (observed none).
+
+**Ranges** (soft range | clamp):
+
+* Fac 0..1 | none. Stops 2..6, stop positions 0..1 and colours 0..1 (hard).
 
 ## Halftone (`CompositorNodeLabHalftone`)
 
@@ -70,6 +79,10 @@ at most 0.07 % of pixels differ (up to ~0.9) because a pixel centre within float
 cell boundary reads another cell's tone, or the anti-aliasing ramp (division by a tiny width)
 amplifies rounding; tolerance 2e-3 with 0.2 % of pixels allowed.
 
+**Ranges** (soft range | clamp):
+
+* Fac 0..1 | none. Cell Size 2..100 (hard 2..400). Softness 0..8 (hard). Angles -pi..pi (radians).
+
 ## Glitch (`CompositorNodeLabGlitch`)
 
 Inputs: `Fac`, `Image`, `Seed`, `Speed` (glitch steps per second, 8), `Split` (px, 6), `Shift`
@@ -84,3 +97,10 @@ context or Speed 0), so the same seed and time render identically and a new step
 the pattern. Order: block shift (wraps horizontally), row jitter (wraps), RGB split (R at +offset,
 B at -offset, clamped; alpha = max), bit-crush (premultiplied RGB clamped to [0, 1], rounded to
 2^bits - 1 levels), Fac mix. Crush CPU vs GPU: 1.2e-7.
+
+**Ranges** (soft range | clamp):
+
+* Fac 0..1, Density 0..1 | none. Seed 0..1000 | none. Speed -60..60, Split -100..100 | none.
+  Shift 0..500, Jitter 0..100 | none (clamped to 0..width-1 internally).
+* Properties: Angle -pi..pi; Flicker and Row Density 0..1 (hard); Block Width/Height 1..512 (hard
+  max 4096); Bits 1..16 (hard).

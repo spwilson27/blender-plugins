@@ -62,14 +62,14 @@ class CompositorNodeLabPattern(LabNode, bpy.types.CompositorNode):
     bl_label = "Pattern"
 
     SOCKETS = [
-        In("Scale", "FLOAT", 10.0),
-        In("Rotation", "FLOAT", 0.0),
-        In("Offset X", "FLOAT", 0.0),
-        In("Offset Y", "FLOAT", 0.0),
+        In("Scale", "FLOAT", 10.0, min=0.0, max=200.0),
+        In("Rotation", "FLOAT", 0.0, min=-180.0, max=180.0),
+        In("Offset X", "FLOAT", 0.0, min=-10.0, max=10.0),
+        In("Offset Y", "FLOAT", 0.0, min=-10.0, max=10.0),
         In("Duty", "FACTOR", 0.5),
         In("Softness", "FACTOR", 0.0),
-        In("Moire Angle", "FLOAT", 4.0),
-        In("Seed", "INT", 0),
+        In("Moire Angle", "FLOAT", 4.0, min=-180.0, max=180.0),
+        In("Seed", "INT", 0, min=0, max=1000),
         In("Color A", "COLOR", (0.0, 0.0, 0.0, 1.0)),
         In("Color B", "COLOR", (1.0, 1.0, 1.0, 1.0)),
         Out("Color", "COLOR"),

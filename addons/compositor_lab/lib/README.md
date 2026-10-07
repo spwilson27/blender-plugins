@@ -63,7 +63,8 @@ class CompositorNodeLabGain(LabNode, bpy.types.CompositorNode):
 NODE_CLASSES = [CompositorNodeLabGain]                  # required
 ```
 
-* **`SOCKETS`**: `In(name, type, default, hide_value=False)` and `Out(name, type, single=False)`;
+* **`SOCKETS`**: `In(name, type, default, hide_value=False, min=None, max=None, clamp=None)` and
+  `Out(name, type, single=False)`;
   types `FLOAT`, `FACTOR`, `COLOR`, `VECTOR`, `INT`, `BOOL`. **`PROPS`**: names of the properties to
   draw (`(name, {kwargs})` for `layout.prop` arguments, `None` for a separator); override
   `draw_buttons` for anything conditional. Properties are normal `bpy.props` annotations.
@@ -72,6 +73,12 @@ NODE_CLASSES = [CompositorNodeLabGain]                  # required
   defaults to frame 0 / time 0 / the output size. `evaluate_cpu` / `evaluate_gpu` are provided.
   Any exception in them is recorded in `lib/errors.py` and re-raised: Blender shows it as the
   node's info message and writes default outputs, and the tests fail on it.
+* **Ranges.** `min` / `max` give a FLOAT / FACTOR / INT input its slider (soft) range (FACTOR is 0..1
+  by default); applied in `init()`, on register and on `load_post` (older files and builds without
+  socket `min_value` are tolerated). `clamp=True` hard-clamps to `min` / `max`, `clamp=(lo, hi)` to
+  that range (a `None` side is open). The clamp is applied by `in_float` / `in_int` and, for a
+  scalar single value, by `in_image_array` / `in_texture_or_value`, so CPU and GPU agree; pixels of
+  a linked image are never clamped. Ranges per node are listed in `docs/nodes/*.md`.
 * **Outputs**: `out_array(outputs, name)` (CPU, writable, `None` if unused) and
   `out_texture(outputs, name)` (GPU). Always skip unused outputs. Float outputs have one channel.
 * **Single-value outputs** (F3): `Out("Mean", "FLOAT", single=True)`, written with

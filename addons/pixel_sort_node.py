@@ -543,6 +543,28 @@ def _mask_to_bool(buf):
 # Node
 # ---------------------------------------------------------------------------
 
+def _apply_ranges(node):
+    """Slider ranges (builds without socket min_value / max_value keep unbounded sliders)."""
+    for name in ("Lower", "Upper", "Mask"):
+        sock = node.inputs.get(name)
+        if sock is not None and hasattr(sock, "min_value"):
+            sock.min_value = 0.0
+            sock.max_value = 1.0
+
+
+@bpy.app.handlers.persistent
+def _load_post_ranges(*_args):
+    try:
+        trees = list(bpy.data.node_groups)
+    except AttributeError:      # bpy.data is restricted while an add-on is being enabled
+        return
+    trees += [t for t in (getattr(sc, "node_tree", None) for sc in bpy.data.scenes) if t]
+    for tree in trees:
+        for node in tree.nodes:
+            if node.bl_idname == "CompositorNodePixelSort":
+                _apply_ranges(node)
+
+
 class CompositorNodePixelSort(bpy.types.CompositorNode):
     '''Sort runs of pixels along rows or columns'''
     bl_idname = "CompositorNodePixelSort"
@@ -564,10 +586,10 @@ class CompositorNodePixelSort(bpy.types.CompositorNode):
         lower.default_value = 0.25
         upper = self.inputs.new('NodeSocketFloat', "Upper")
         upper.default_value = 0.8
-        # Factor subtype = float socket with a 0..1 range (min/max can't be set from Python).
         mask = self.inputs.new('NodeSocketFloatFactor', "Mask")
         mask.default_value = 1.0
         self.outputs.new('NodeSocketColor', "Image")
+        _apply_ranges(self)
 
     def draw_buttons(self, context, layout):
         layout.prop(self, "mask_key", text="Mask")
@@ -725,9 +747,20 @@ def _unregister_menu():
 def register():
     bpy.utils.register_class(CompositorNodePixelSort)
     _register_menu()
+    _unregister_range_handler()
+    bpy.app.handlers.load_post.append(_load_post_ranges)
+    _load_post_ranges()
+
+
+def _unregister_range_handler():
+    for h in list(bpy.app.handlers.load_post):
+        if getattr(h, "__name__", "") == "_load_post_ranges" and \
+                getattr(h, "__module__", "") == __name__:
+            bpy.app.handlers.load_post.remove(h)
 
 
 def unregister():
+    _unregister_range_handler()
     _unregister_menu()
     bpy.utils.unregister_class(CompositorNodePixelSort)
     _shader_cache.clear()

@@ -64,14 +64,15 @@ class CompositorNodeLabReactionDiffusion(StatefulNode, LabNode, bpy.types.Compos
 
     SOCKETS = [
         In("Seed", "COLOR", (0.0, 0.0, 0.0, 1.0), hide_value=True),
-        In("Feed", "FLOAT", 0.0545),
-        In("Kill", "FLOAT", 0.062),
-        In("Du", "FLOAT", 1.0),
-        In("Dv", "FLOAT", 0.5),
-        In("dt", "FLOAT", 1.0),
-        In("Iterations per Frame", "INT", 20),
-        In("Feed Map", "FLOAT", 1.0),
-        In("Kill Map", "FLOAT", 1.0),
+        In("Feed", "FLOAT", 0.0545, min=0.0, max=0.1, clamp=(0.0, 1.0)),
+        In("Kill", "FLOAT", 0.062, min=0.0, max=0.1, clamp=(0.0, 1.0)),
+        In("Du", "FLOAT", 1.0, min=0.0, max=2.0, clamp=(0.0, 5.0)),
+        In("Dv", "FLOAT", 0.5, min=0.0, max=2.0, clamp=(0.0, 5.0)),
+        In("dt", "FLOAT", 1.0, min=0.0, max=2.0, clamp=(0.0, 5.0)),
+        In("Iterations per Frame", "INT", 20, min=0, max=100,
+           clamp=(0, MAX_ITERATIONS)),
+        In("Feed Map", "FLOAT", 1.0, min=0.0, max=2.0),
+        In("Kill Map", "FLOAT", 1.0, min=0.0, max=2.0),
         Out("V", "FLOAT"),
         Out("U", "FLOAT"),
         Out("Color", "COLOR"),
@@ -87,7 +88,7 @@ class CompositorNodeLabReactionDiffusion(StatefulNode, LabNode, bpy.types.Compos
         description="Simulation resolution divisor: the fields are simulated at the output size "
                     "divided by this and upsampled bilinearly (changing it restarts the state)")
     edge_mode: EnumProperty(name="Edges", items=_EDGE_ITEMS, default='WRAP')
-    seed: IntProperty(name="Seed", default=1, min=0, max=2 ** 31 - 1,
+    seed: IntProperty(name="Seed", default=1, min=0, soft_max=1000, max=2 ** 31 - 1,
                       description="Random seed of the noise seeding and of the initial V noise")
     seed_density: FloatProperty(
         name="Density", default=0.12, min=0.0, max=1.0,
@@ -96,7 +97,7 @@ class CompositorNodeLabReactionDiffusion(StatefulNode, LabNode, bpy.types.Compos
         name="Noise", default=0.02, min=0.0, max=1.0,
         description="Amplitude of the white noise added to V outside the seeded area")
     preroll: IntProperty(
-        name="Pre-roll", default=0, min=0, max=2000,
+        name="Pre-roll", default=0, min=0, soft_max=100, max=2000,
         description="Frames worth of iterations (Iterations per Frame each) run when the state is "
                     "(re)started, so a still render shows a developed pattern")
     color_a: FloatVectorProperty(name="Color A", size=4, subtype='COLOR', min=0.0, soft_max=1.0,

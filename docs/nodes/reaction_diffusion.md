@@ -98,3 +98,14 @@ its full iteration count), beyond Max Catch-up the state is held.
 
 Performance at 1920x1080, 20 iterations per frame (Mac mini, M-series): CPU 250 ms/frame at Scale 1,
 210 ms at Scale 2; GPU 55 ms at Scale 1, 30 ms at Scale 2.
+
+## Ranges
+
+Socket / property | soft range | clamp
+
+* Feed, Kill: 0..0.1, clamped to 0..1
+* Du, Dv, dt: 0..2, clamped to 0..5
+* Iterations per Frame: 0..100, clamped to 0..1000
+* Feed Map, Kill Map: 0..2, none (multipliers of Feed / Kill)
+* Properties: Seed hard 0..2^31-1, soft max 1000; Pre-roll hard 0..2000, soft max 100;
+  Density, Noise, Low, High hard 0..1; Scale hard 1..16

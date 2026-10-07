@@ -81,7 +81,7 @@ class CompositorNodeLabPosterize(LabNode, bpy.types.CompositorNode):
     SOCKETS = [
         In("Fac", "FACTOR", 1.0),
         In("Image", "COLOR", (0.8, 0.8, 0.8, 1.0)),
-        In("Levels", "INT", 4),
+        In("Levels", "INT", 4, min=2, max=256, clamp=(2, MAX_LEVELS)),
         Out("Color", "COLOR"),
     ]
     PROPS = ["per_channel", "channel_levels", "lightness_only", "gamma", None, "dither",
@@ -90,7 +90,7 @@ class CompositorNodeLabPosterize(LabNode, bpy.types.CompositorNode):
     per_channel: BoolProperty(name="Per Channel", description="Use separate level counts for "
                               "R, G and B instead of the Levels input", default=False)
     channel_levels: IntVectorProperty(name="Levels", size=3, default=(4, 4, 4), min=2,
-                                      max=MAX_LEVELS)
+                                      max=MAX_LEVELS, soft_max=256)
     lightness_only: BoolProperty(name="Lightness Only", description="Quantise OKLab lightness "
                                  "and keep the colour (gamma is ignored)", default=False)
     gamma: FloatProperty(name="Gamma", description="Quantise in a gamma-encoded space "
@@ -100,7 +100,7 @@ class CompositorNodeLabPosterize(LabNode, bpy.types.CompositorNode):
     dither_amount: FloatProperty(name="Amount", description="Dither strength", default=1.0,
                                  min=0.0, max=1.0, subtype='FACTOR')
     seed: IntProperty(name="Seed", description="Seed of the Random and Blue-ish dither",
-                      default=0, min=0, max=2**31 - 1)
+                      default=0, min=0, max=2**31 - 1, soft_max=1000)
 
     # -- shared -------------------------------------------------------------
     def _params(self, inputs):

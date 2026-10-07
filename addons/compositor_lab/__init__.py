@@ -135,6 +135,53 @@ def _unregister_menu():
 
 
 # ---------------------------------------------------------------------------
+# Socket ranges: nodes saved with older ranges pick up the current SOCKETS spec on load.
+# ---------------------------------------------------------------------------
+
+def refresh_socket_ranges(*_args):
+    """Re-apply the slider ranges of the SOCKETS specs to every Lab node in every node tree."""
+    from .lib.node import LabNode, apply_ranges
+
+    try:
+        trees = list(bpy.data.node_groups)
+    except AttributeError:      # bpy.data is restricted while an add-on is being enabled
+        return
+    for scene in bpy.data.scenes:
+        tree = getattr(scene, "node_tree", None)
+        if tree is not None and tree not in trees:
+            trees.append(tree)
+    for tree in trees:
+        for node in tree.nodes:
+            if isinstance(node, LabNode):
+                try:
+                    apply_ranges(node)
+                except Exception:
+                    _log("could not update socket ranges of %r:\n%s"
+                         % (node.name, traceback.format_exc()))
+
+
+def _load_post_ranges(*_args):
+    refresh_socket_ranges()
+
+
+_load_post_ranges = bpy.app.handlers.persistent(_load_post_ranges)
+
+
+def _register_range_handler():
+    handlers = bpy.app.handlers.load_post
+    if not any(getattr(h, "__name__", "") == "_load_post_ranges"
+               and getattr(h, "__module__", "") == __name__ for h in handlers):
+        handlers.append(_load_post_ranges)
+
+
+def _unregister_range_handler():
+    for h in list(bpy.app.handlers.load_post):
+        if getattr(h, "__name__", "") == "_load_post_ranges" and \
+                getattr(h, "__module__", "") == __name__:
+            bpy.app.handlers.load_post.remove(h)
+
+
+# ---------------------------------------------------------------------------
 
 def register():
     ERRORS.clear()
@@ -161,9 +208,15 @@ def register():
         _register_menu()
     except Exception:
         _log("menu registration failed:\n" + traceback.format_exc())
+    _register_range_handler()
+    try:
+        refresh_socket_ranges()
+    except Exception:
+        _log("socket range update failed:\n" + traceback.format_exc())
 
 
 def unregister():
+    _unregister_range_handler()
     _unregister_menu()
     for section in REGISTERED.values():
         for cls in reversed(section):

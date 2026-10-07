@@ -38,6 +38,8 @@ Tolerances: CPU vs float64 per-pixel reference 2e-4 (observed 6e-5); CPU vs GPU 
 worst, typically 1e-5): the orientation and the `pow(255 s, q)` weights amplify last-bit differences.
 CPU speed: 4 s for 1080p noisy at radius 4 (cost grows with `(2 r)^2`); GPU 0.1 s.
 
+Ranges (soft | clamp): Radius 0..16 | 0..16; Sharpness 0..16 | 0..16; Anisotropy 0..2 | 0..2 (the node already clamped these internally).
+
 ## Displace / Glass (`CompositorNodeLabDisplace`)
 
 Inputs: Image, Map (default 0.5 grey), Strength (20; may be an image), Dispersion (0). Props: Mode
@@ -53,6 +55,8 @@ overshoot. A map of another size is clamp-resampled (nearest) on both backends.
 Tolerances: vs float64 reference 2e-5 (offset; observed 3e-6), 1e-4 (glass; observed 2e-5); CPU vs
 GPU 5e-5 (observed 2.2e-5 worst, glass on a noisy image).
 
+Ranges (soft | clamp): Strength -100..100 | none (negative inverts; may be an image); Dispersion -1..1 | none.
+
 ## Liquify (`CompositorNodeLabLiquify`)
 
 Inputs: Image, Center X / Y (0.5; normalised, y up), Radius (0.4), Strength (0.5), Falloff (1).
@@ -64,6 +68,8 @@ bulges). With aspect correction distances are in pixels and Radius is a fraction
 Pixels outside the radius, strength 0 and radius 0 are bit-exact identities. Tests also check the
 radial mass distribution under a twirl (<0.3 % change) and that bulge / pinch grow / shrink a disc.
 Tolerances: vs float64 reference 2e-5 (observed 2e-6); CPU vs GPU 5e-5 (observed 1.4e-5).
+
+Ranges (soft | clamp): Center X / Y 0..1 | none; Radius 0..2 | min 0; Strength -4..4 | none (Pinch / Bulge clamps internally to [-4, 1]); Falloff 0..1 | 0..1.
 
 ## Edge Stylise (`CompositorNodeLabEdgeStylise`)
 
@@ -83,3 +89,5 @@ Input: Image. Output: Image. Props (shown per mode): Mode (XDoG / Sobel / Outlin
 
 Tolerances: XDoG vs float64 2e-4 (observed 1.4e-4 at Phi 1000, otherwise 4e-6); Sobel 1e-5 (1.5e-7);
 Outline 1e-5 (1.5e-7); CPU vs GPU XDoG 2e-4 (observed 4e-6), others 1e-5.
+
+Ranges: no numeric sockets; properties keep their hard limits (Sigma 0.05..24, K 1..10, Tau 0..2, Phi 0..1000, Epsilon -1..1, Gain 0..100, Width 0..32).

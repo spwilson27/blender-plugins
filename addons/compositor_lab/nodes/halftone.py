@@ -169,15 +169,20 @@ class CompositorNodeLabHalftone(LabNode, bpy.types.CompositorNode):
     mode: EnumProperty(name="Mode", items=_MODE_ITEMS, default='CMYK')
     shape: EnumProperty(name="Shape", items=_SHAPE_ITEMS, default='ROUND')
     cell_size: FloatProperty(name="Cell Size", description="Screen period in pixels",
-                             default=10.0, min=2.0, max=400.0, subtype='PIXEL')
+                             default=10.0, min=2.0, max=400.0, soft_max=100.0, subtype='PIXEL')
     softness: FloatProperty(name="Softness", description="Edge anti-aliasing width in pixels "
                             "(0 = hard edges)", default=1.0, min=0.0, max=8.0)
     angle: FloatProperty(name="Angle", description="Screen angle (mono, lines, cross-hatch)",
-                         default=math.radians(45.0), subtype='ANGLE')
-    angle_c: FloatProperty(name="Cyan", default=math.radians(15.0), subtype='ANGLE')
-    angle_m: FloatProperty(name="Magenta", default=math.radians(75.0), subtype='ANGLE')
-    angle_y: FloatProperty(name="Yellow", default=0.0, subtype='ANGLE')
-    angle_k: FloatProperty(name="Black", default=math.radians(45.0), subtype='ANGLE')
+                         default=math.radians(45.0), soft_min=-math.pi, soft_max=math.pi,
+                         subtype='ANGLE')
+    angle_c: FloatProperty(name="Cyan", default=math.radians(15.0),
+                           soft_min=-math.pi, soft_max=math.pi, subtype='ANGLE')
+    angle_m: FloatProperty(name="Magenta", default=math.radians(75.0),
+                           soft_min=-math.pi, soft_max=math.pi, subtype='ANGLE')
+    angle_y: FloatProperty(name="Yellow", default=0.0,
+                           soft_min=-math.pi, soft_max=math.pi, subtype='ANGLE')
+    angle_k: FloatProperty(name="Black", default=math.radians(45.0),
+                           soft_min=-math.pi, soft_max=math.pi, subtype='ANGLE')
     paper_color: FloatVectorProperty(name="Paper", subtype='COLOR', size=3, min=0.0, max=1.0,
                                      default=(1.0, 1.0, 1.0))
     ink_color: FloatVectorProperty(name="Ink", description="Ink of the mono / lines / "

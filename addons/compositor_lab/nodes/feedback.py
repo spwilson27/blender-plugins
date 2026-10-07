@@ -82,13 +82,13 @@ class CompositorNodeLabFeedback(StatefulNode, LabNode, bpy.types.CompositorNode)
 
     SOCKETS = [
         In("Image", "COLOR", (0.0, 0.0, 0.0, 1.0)),
-        In("Amount", "FACTOR", 0.9),
-        In("Decay", "FLOAT", 0.97),
-        In("Zoom", "FLOAT", 1.0),
-        In("Rotation", "FLOAT", 0.0),
-        In("Offset X", "FLOAT", 0.0),
-        In("Offset Y", "FLOAT", 0.0),
-        In("Hue Shift", "FLOAT", 0.0),
+        In("Amount", "FACTOR", 0.9, clamp=True),
+        In("Decay", "FLOAT", 0.97, min=0.0, max=1.0),
+        In("Zoom", "FLOAT", 1.0, min=0.1, max=4.0, clamp=(1e-3, None)),
+        In("Rotation", "FLOAT", 0.0, min=-180.0, max=180.0),
+        In("Offset X", "FLOAT", 0.0, min=-500.0, max=500.0),
+        In("Offset Y", "FLOAT", 0.0, min=-500.0, max=500.0),
+        In("Hue Shift", "FLOAT", 0.0, min=-180.0, max=180.0),
         Out("Image", "COLOR"),
     ]
     PROPS = ["blend_type", "edge_mode", "preroll"]
@@ -96,7 +96,7 @@ class CompositorNodeLabFeedback(StatefulNode, LabNode, bpy.types.CompositorNode)
     blend_type: EnumProperty(name="Blend", items=_BLEND_ITEMS, default='MIX')
     edge_mode: EnumProperty(name="Edges", items=_EDGE_ITEMS, default='CLAMP')
     preroll: IntProperty(
-        name="Pre-roll", default=0, min=0, max=256,
+        name="Pre-roll", default=0, min=0, soft_max=64, max=256,
         description="Iterations run on the input when the state is (re)started, so a still "
                     "render shows the trails (0: the first frame is the input)")
 

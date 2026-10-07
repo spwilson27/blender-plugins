@@ -86,8 +86,8 @@ class CompositorNodeLabDisplace(LabNode, bpy.types.CompositorNode):
     SOCKETS = [
         In("Image", "COLOR", (0.5, 0.5, 0.5, 1.0)),
         In("Map", "COLOR", (0.5, 0.5, 0.5, 1.0)),
-        In("Strength", "FLOAT", 20.0),
-        In("Dispersion", "FLOAT", 0.0),
+        In("Strength", "FLOAT", 20.0, min=-100.0, max=100.0),
+        In("Dispersion", "FLOAT", 0.0, min=-1.0, max=1.0),
         Out("Image", "COLOR"),
     ]
     PROPS = ["mode", "edge_mode", "interpolation"]
