@@ -14,9 +14,16 @@ bl_info = {
 
 import importlib
 import pkgutil
+import sys
 import traceback
 
 import bpy
+
+# Reinstalling or re-enabling the add-on in a running Blender reloads this package but not its
+# submodules, which would mix new modules with old ones still cached (e.g. a new node calling a
+# helper the old lib lacks). Drop them so everything is imported fresh from disk.
+for _name in [n for n in sys.modules if n.startswith(__name__ + ".")]:
+    del sys.modules[_name]
 
 SECTIONS = ("Filter", "Generate", "Simulate", "Utility")
 
